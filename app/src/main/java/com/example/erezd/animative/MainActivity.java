@@ -49,7 +49,6 @@ public class MainActivity extends AppCompatActivity {
     private ParticleBrush m_ParticleBrush;
     private StrokePaint m_Paint;
     private StrokeRenderer m_StrokeRenderer;
-    private Button m_DrawButton, m_CopyButton;
     private boolean m_IsButtonClicked = false;
     private MultiChannelSmoothener m_Smoothener;
 
@@ -65,8 +64,7 @@ public class MainActivity extends AppCompatActivity {
         createPathBuilder();
 
         SV = findViewById(R.id.surfaceView);
-        m_CopyButton = findViewById(R.id.buttonCopy);
-        m_DrawButton = findViewById(R.id.buttonDraw);
+        //m_CopyButton = findViewById(R.id.buttonCopy);
 
         SV.getHolder().addCallback(new SurfaceHolder.Callback(){
             @Override
@@ -135,12 +133,12 @@ public class MainActivity extends AppCompatActivity {
         if(!m_IsButtonClicked)
         {
             m_IsButtonClicked = true;
-            m_DrawButton.setBackgroundColor(Color.RED);
+            view.setBackgroundColor(Color.RED);
         }
         else
         {
             m_IsButtonClicked = false;
-            m_DrawButton.setBackgroundColor(Color.BLUE);
+            view.setBackgroundColor(Color.BLUE);
         }
     }
 
