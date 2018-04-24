@@ -1,4 +1,4 @@
-package com.example.erezd.animative;
+package com.example.erezd.animative.activities;
 
 import android.app.Activity;
 import android.content.Context;
@@ -16,6 +16,7 @@ import android.view.View.OnTouchListener;
 import android.widget.Button;
 import android.widget.RelativeLayout;
 
+import com.example.erezd.animative.R;
 import com.wacom.ink.boundary.Boundary;
 import com.wacom.ink.boundary.BoundaryBuilder;
 import com.wacom.ink.path.PathBuilder.PropertyFunction;
