@@ -1,5 +1,7 @@
 package com.example.erezd.animative.utilities;
 
+import android.util.Log;
+
 import com.wacom.ink.rasterization.BlendMode;
 import com.wacom.ink.utils.Utils;
 
@@ -99,8 +101,13 @@ public class Stroke {
 
     public void CopyPoints(FloatBuffer i_Source, int i_SourcePosition, int i_Size) {
         this.size = size;
-        points = FloatBuffer.allocate(i_Size);
-        points.put(i_Source);
+        points = ByteBuffer.allocateDirect(size * Float.SIZE/Byte.SIZE).order(ByteOrder.nativeOrder()).asFloatBuffer();
+        try {
+            Utils.copyFloatBuffer(i_Source, points, i_SourcePosition, 0, i_Size);
+        }
+        catch (Exception ex){
+            Log.e("ERRORR", ex.getStackTrace().toString());
+        }
     }
 
     public ByteBuffer clone(ByteBuffer original) {
