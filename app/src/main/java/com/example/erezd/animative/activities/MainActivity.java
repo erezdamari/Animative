@@ -1,5 +1,6 @@
 package com.example.erezd.animative.activities;
 
+import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Context;
 import android.graphics.Canvas;
@@ -15,8 +16,10 @@ import android.view.View;
 import android.view.View.OnTouchListener;
 import android.widget.Button;
 import android.widget.RelativeLayout;
+import android.widget.Toast;
 
 import com.example.erezd.animative.R;
+import com.example.erezd.animative.utilities.Stroke;
 import com.wacom.ink.boundary.Boundary;
 import com.wacom.ink.boundary.BoundaryBuilder;
 import com.wacom.ink.path.PathBuilder.PropertyFunction;
@@ -38,6 +41,7 @@ import com.wacom.ink.smooth.MultiChannelSmoothener.SmoothingResult;
 
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
+import java.util.LinkedList;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -56,7 +60,9 @@ public class MainActivity extends AppCompatActivity {
     private BoundaryBuilder boundaryBuilder;
     private ArrayList<Path> boundaryPaths;
     private BoundaryView boundaryView;
+    private LinkedList<Stroke> m_Strokes = new LinkedList<>();
 
+    @SuppressLint("ClickableViewAccessibility")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -108,14 +114,28 @@ public class MainActivity extends AppCompatActivity {
         SV.setOnTouchListener(new View.OnTouchListener() {
             @Override
             public boolean onTouch(View v, MotionEvent event) {
+                boolean returnedVal = false;
+
                 if(m_IsButtonClicked) {
-                    buildPath(event);
+                    boolean isStrokeDrawingFinished = buildPath(event);
                     drawStroke(event);
                     renderView();
-                    return true;
+
+                    if(isStrokeDrawingFinished){
+                        Stroke stroke = new Stroke();
+                        stroke.CopyPoints(m_PathBuilder.getPathBuffer(), 0, m_PathBuilder.getPathSize());
+                        stroke.SetStride(m_PathBuilder.getStride());
+                        stroke.SetColor(m_Paint.getColor());
+                        stroke.SetInterval(0.0f, 1.0f);
+                        stroke.SetBlendMode(BlendMode.BLENDMODE_NORMAL);
+                        m_Strokes.add(stroke);
+                        Toast.makeText(MainActivity.this, "We have " + m_Strokes.size() + " strokes in the list.", Toast.LENGTH_SHORT).show();
+
+                    }
+                    returnedVal = true;
                 }
 
-                return false;
+                return returnedVal;
             }
         });
 
@@ -150,11 +170,11 @@ public class MainActivity extends AppCompatActivity {
 
     }
 
-    private void buildPath(MotionEvent event) {
+    private boolean buildPath(MotionEvent event) {
         if (event.getAction() != MotionEvent.ACTION_DOWN &&
                 event.getAction() != MotionEvent.ACTION_MOVE &&
                 event.getAction() != MotionEvent.ACTION_UP) {
-            return;
+            return false;
         }
 
         if (event.getAction() == MotionEvent.ACTION_DOWN) {
@@ -172,12 +192,15 @@ public class MainActivity extends AppCompatActivity {
             m_PathBuilder.addPathPart(smoothingResult.getSmoothedPoints(), smoothingResult.getSize());
         }
 
-        if(event.getAction() == MotionEvent.ACTION_UP) {
-            boundaryBuilder.addPath(m_PathBuilder.getPathBuffer(), m_PathBuilder.getPathSize(), m_PathBuilder.getStride());
-            Boundary boundary = boundaryBuilder.getBoundary();
-            boundaryPaths.add(boundary.createPath());
-            boundaryView.invalidate();
-        }
+        // Create a preliminary path.
+        FloatBuffer preliminaryPath = m_PathBuilder.createPreliminaryPath();
+        // Smoothen the preliminary path's control points (return inform of a path part).
+        smoothingResult = m_Smoothener.smooth(preliminaryPath, m_PathBuilder.getPreliminaryPathSize(), true);
+        // Add the smoothed preliminary path to the path builder.
+        m_PathBuilder.finishPreliminaryPath(smoothingResult.getSmoothedPoints(), smoothingResult.getSize());
+
+
+        return (event.getAction() == MotionEvent.ACTION_UP && m_PathBuilder.hasFinished());
     }
 
     private void drawStroke(MotionEvent event) {
