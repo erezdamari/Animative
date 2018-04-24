@@ -20,7 +20,8 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:paddingEnd="8dp">
+            android:paddingEnd="8dp"
+            android:layoutDirection="ltr">
 
             <Button
                 android:id="@+id/buttonDraw"
@@ -47,7 +48,8 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:paddingTop="16dp">
+            android:paddingTop="16dp"
+            android:layoutDirection="ltr">
 
                 <TextView
                     android:layout_width="wrap_content"
