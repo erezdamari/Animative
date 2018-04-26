@@ -22,7 +22,7 @@ public class Stroke {
     private int seed;
     private boolean hasRandomSeed;
 
-    public int getStride() {
+    public int GetStride() {
         return stride;
     }
 

@@ -7,6 +7,7 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Path;
+import android.net.Uri;
 import android.os.Bundle;
 import android.support.v7.app.AppCompatActivity;
 import android.view.MotionEvent;
@@ -20,6 +21,7 @@ import android.widget.Toast;
 
 import com.example.erezd.animative.R;
 import com.example.erezd.animative.utilities.Stroke;
+import com.example.erezd.animative.utilities.StrokeSerializer;
 import com.wacom.ink.boundary.Boundary;
 import com.wacom.ink.boundary.BoundaryBuilder;
 import com.wacom.ink.path.PathBuilder.PropertyFunction;
@@ -61,6 +63,7 @@ public class MainActivity extends AppCompatActivity {
     private ArrayList<Path> boundaryPaths;
     private BoundaryView boundaryView;
     private LinkedList<Stroke> m_Strokes = new LinkedList<>();
+    private StrokeSerializer m_Serializer;
 
     @SuppressLint("ClickableViewAccessibility")
     @Override
@@ -95,6 +98,7 @@ public class MainActivity extends AppCompatActivity {
 
                 m_StrokeRenderer = new StrokeRenderer(m_Canvas, m_Paint, m_PathStride, width, height);
 
+                m_Serializer = new StrokeSerializer();
                 renderView();
             }
 
@@ -147,6 +151,12 @@ public class MainActivity extends AppCompatActivity {
             //            RelativeLayout.LayoutParams.MATCH_PARENT,
               //          RelativeLayout.LayoutParams.MATCH_PARENT));
 
+    }
+
+    @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        m_Serializer.Serialize(Uri.fromFile(getFileStreamPath("will.bin")), m_Strokes);
+        super.onSaveInstanceState(outState);
     }
 
     public void buttonDraw_OnClick(View view)
