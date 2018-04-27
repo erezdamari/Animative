@@ -9,6 +9,7 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Environment;
 import android.support.v7.app.AppCompatActivity;
 import android.view.MotionEvent;
 import android.view.SurfaceHolder;
@@ -41,6 +42,7 @@ import com.wacom.ink.rendering.EGLRenderingContext.EGLConfiguration;
 import com.wacom.ink.smooth.MultiChannelSmoothener;
 import com.wacom.ink.smooth.MultiChannelSmoothener.SmoothingResult;
 
+import java.io.File;
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.LinkedList;
@@ -99,18 +101,20 @@ public class MainActivity extends AppCompatActivity {
                 m_StrokeRenderer = new StrokeRenderer(m_Canvas, m_Paint, m_PathStride, width, height);
 
                 m_Serializer = new StrokeSerializer();
+                m_Strokes = m_Serializer.Deserialize(Uri.fromFile(getFileStreamPath("will.bin")));
+
+                loadStrokes();
+                drawStrokes();
                 renderView();
             }
 
             @Override
             public void surfaceCreated(SurfaceHolder holder) {
-
             }
 
             @Override
             public void surfaceDestroyed(SurfaceHolder holder) {
                 releaseResources();
-
             }
 
         });
@@ -159,6 +163,30 @@ public class MainActivity extends AppCompatActivity {
         super.onSaveInstanceState(outState);
     }
 
+    protected void loadStrokes(){
+        m_Strokes = m_Serializer.Deserialize(Uri.fromFile(new File(Environment.getExternalStorageDirectory() + "/will.bin")));
+    }
+
+    protected void saveStrokes(){
+        m_Serializer.Serialize(Uri.fromFile(new File(Environment.getExternalStorageDirectory() + "/will.bin")), m_Strokes);
+    }
+
+    private void drawStrokes() {
+        m_Canvas.setTarget(m_StrokesLayer);
+        //m_Canvas.clearColor();
+
+        for (Stroke stroke: m_Strokes){
+            m_Paint.setColor(Color.RED);
+            m_StrokeRenderer.setStrokePaint(m_Paint);
+            m_StrokeRenderer.drawPoints(stroke.GetPoints(), 0, stroke.GetSize(), stroke.GetStartValue(), stroke.GetEndValue(), true);
+            m_StrokeRenderer.blendStroke(m_StrokesLayer, BlendMode.BLENDMODE_NORMAL);
+        }
+
+        m_Canvas.setTarget(m_CurrentFrameLayer);
+        m_Canvas.clearColor(Color.WHITE);
+        m_Canvas.drawLayer(m_StrokesLayer, BlendMode.BLENDMODE_NORMAL);
+    }
+
     public void buttonDraw_OnClick(View view)
     {
         if(!m_IsButtonClicked)
@@ -175,9 +203,6 @@ public class MainActivity extends AppCompatActivity {
 
     public void buttonCopy_OnClick(View view)
     {
-        FloatBuffer buffer = m_PathBuilder.getPreliminaryPathBuffer();
-
-
     }
 
     private boolean buildPath(MotionEvent event) {
@@ -239,12 +264,6 @@ public class MainActivity extends AppCompatActivity {
         m_StrokeRenderer.dispose();
         m_Canvas.dispose();
     }
-
-    /*private void renderView() {
-        m_Canvas.setTarget(m_ViewLayer);
-        m_Canvas.clearColor(Color.RED);
-        m_Canvas.invalidate();
-    }*/
 
     private void createPathBuilder()
     {

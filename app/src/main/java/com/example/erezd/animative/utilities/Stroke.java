@@ -22,6 +22,15 @@ public class Stroke {
     private int seed;
     private boolean hasRandomSeed;
 
+    public Stroke(){
+
+    }
+
+    public Stroke(int size) {
+        SetPoints(Utils.createNativeFloatBufferBySize(size), size);
+        startT = 0.0f;
+        endT = 1.0f;
+    }
     public int GetStride() {
         return stride;
     }
@@ -110,12 +119,8 @@ public class Stroke {
         }
     }
 
-    public ByteBuffer clone(ByteBuffer original) {
-        ByteBuffer clone = ByteBuffer.allocate(original.capacity());
-        original.rewind();//copy from the beginning
-        clone.put(original);
-        original.rewind();
-        clone.flip();
-        return clone;
+    public void SetPoints(FloatBuffer points, int pointsSize) {
+        size = pointsSize;
+        this.points = points;
     }
 }
