@@ -1,7 +1,6 @@
 package com.example.erezd.animative.activities;
 
 import android.annotation.SuppressLint;
-import android.app.Activity;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -15,14 +14,12 @@ import android.view.MotionEvent;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
-import android.view.View.OnTouchListener;
-import android.widget.Button;
-import android.widget.RelativeLayout;
 import android.widget.Toast;
 
 import com.example.erezd.animative.R;
 import com.example.erezd.animative.utilities.Stroke;
 import com.example.erezd.animative.utilities.StrokeSerializer;
+import com.wacom.ink.WILLException;
 import com.wacom.ink.boundary.Boundary;
 import com.wacom.ink.boundary.BoundaryBuilder;
 import com.wacom.ink.path.PathBuilder.PropertyFunction;
@@ -39,12 +36,25 @@ import com.wacom.ink.rasterization.StrokePaint;
 import com.wacom.ink.rasterization.StrokeRenderer;
 import com.wacom.ink.rendering.EGLRenderingContext;
 import com.wacom.ink.rendering.EGLRenderingContext.EGLConfiguration;
+import com.wacom.ink.serialization.InkPathData;
 import com.wacom.ink.smooth.MultiChannelSmoothener;
 import com.wacom.ink.smooth.MultiChannelSmoothener.SmoothingResult;
+import com.wacom.ink.willformat.BaseNode;
+import com.wacom.ink.willformat.CorePropertiesBuilder;
+import com.wacom.ink.willformat.ExtendedPropertiesBuilder;
+import com.wacom.ink.willformat.Paths;
+import com.wacom.ink.willformat.Section;
+import com.wacom.ink.willformat.WILLFormatException;
+import com.wacom.ink.willformat.WILLReader;
+import com.wacom.ink.willformat.WILLWriter;
+import com.wacom.ink.willformat.WillDocument;
+import com.wacom.ink.willformat.WillDocumentFactory;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.LinkedList;
 
 public class MainActivity extends AppCompatActivity {
@@ -66,6 +76,9 @@ public class MainActivity extends AppCompatActivity {
     private BoundaryView boundaryView;
     private LinkedList<Stroke> m_Strokes = new LinkedList<>();
     private StrokeSerializer m_Serializer;
+    private int sceneWidth;
+    private int sceneHeight;
+
 
     @SuppressLint("ClickableViewAccessibility")
     @Override
@@ -87,7 +100,6 @@ public class MainActivity extends AppCompatActivity {
 
                 m_Canvas = InkCanvas.create(holder, new EGLRenderingContext.EGLConfiguration());
 
-
                 m_ViewLayer = m_Canvas.createViewLayer(width, height);//everything in this layer is drawn to screen (it is the target layer)
                 m_StrokesLayer = m_Canvas.createLayer(width, height);//this layer draws all strokes
                 m_CurrentFrameLayer = m_Canvas.createLayer(width, height);//this layer contains all the drawings on screen.
@@ -106,7 +118,10 @@ public class MainActivity extends AppCompatActivity {
                 m_Serializer = new StrokeSerializer();
                 m_Strokes = m_Serializer.Deserialize(Uri.fromFile(getFileStreamPath("will.bin")));
 
-                loadStrokes();
+                sceneWidth = width;
+                sceneHeight = height;
+
+                loadWillFile();
                 drawStrokes();
                 renderView();
             }
@@ -164,21 +179,95 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onSaveInstanceState(Bundle outState) {
-        m_Serializer.Serialize(Uri.fromFile(getFileStreamPath("will.bin")), m_Strokes);
+        saveWillFile();
         super.onSaveInstanceState(outState);
     }
 
-    protected void loadStrokes(){
-        m_Strokes = m_Serializer.Deserialize(Uri.fromFile(new File(Environment.getExternalStorageDirectory() + "/will.bin")));
+    private void saveWillFile(){
+        File willFile = new File(Environment.getExternalStorageDirectory() + "/sample.will");
+
+        LinkedList<InkPathData> inkPathsDataList = new LinkedList<InkPathData>();
+        for (Stroke stroke: m_Strokes){
+            InkPathData inkPathData = new InkPathData(
+                    stroke.GetPoints(),
+                    stroke.GetSize(),
+                    stroke.GetStride(),
+                    stroke.GetWidth(),
+                    stroke.GetColor(),
+                    stroke.GetStartValue(),
+                    stroke.GetEndValue(),
+                    stroke.GetBlendMode(),
+                    stroke.GetPaintIndex(),
+                    stroke.GetSeed(),
+                    stroke.GetHasRandomSeed());
+            inkPathsDataList.add(inkPathData);
+        }
+
+        WillDocumentFactory factory = new WillDocumentFactory(this, getCacheDir());
+        try{
+            WillDocument willDoc = factory.newDocument();
+
+            willDoc.setCoreProperties(new CorePropertiesBuilder()
+                    .category("category")
+                    .created(new Date())
+                    .build());
+
+            willDoc.setExtendedProperties(new ExtendedPropertiesBuilder()
+                    .template("light")
+                    .application("demo")
+                    .appVersion("0.0.1")
+                    .build());
+
+            Section section = willDoc.createSection()
+                    .width(sceneWidth)
+                    .height(sceneHeight)
+                    .addChild(
+                            willDoc.createPaths(inkPathsDataList, 2));
+
+            willDoc.addSection(section);
+
+            new WILLWriter(willFile).write(willDoc);
+            willDoc.recycle();
+        } catch (WILLFormatException e){
+            throw new WILLException("Can't write the sample.will file. Reason: " + e.getLocalizedMessage() + " / Check stacktrace in the console.");
+        }
     }
 
-    protected void saveStrokes(){
-        m_Serializer.Serialize(Uri.fromFile(new File(Environment.getExternalStorageDirectory() + "/will.bin")), m_Strokes);
+    private void loadWillFile(){
+        File willFile = new File(Environment.getExternalStorageDirectory() + "/sample.will");
+        try {
+            WILLReader reader = new WILLReader(new WillDocumentFactory(this, this.getCacheDir()), willFile);
+            WillDocument doc = reader.read();
+            for (Section section: doc.getSections()){
+                ArrayList<BaseNode> pathsElements = section.findChildren(BaseNode.TYPE_PATHS);
+                for (BaseNode node: pathsElements){
+                    Paths pathsElement = (Paths)node;
+                    for (InkPathData inkPath: pathsElement.getInkPaths()){
+                        Stroke stroke = new Stroke();
+                        stroke.CopyPoints(inkPath.getPoints(), 0, inkPath.getSize());
+                        stroke.SetStride(inkPath.getStride());
+                        stroke.SetWidth(inkPath.getWidth());
+                        stroke.SetBlendMode(inkPath.getBlendMode());
+                        stroke.SetInterval(inkPath.getTs(), inkPath.getTf());
+                        stroke.SetColor(inkPath.getColor());
+                        stroke.SetPaintIndex(inkPath.getPaintIndex());
+                        stroke.SetSeed(inkPath.getRandomSeed());
+                        stroke.SetHasRandomSeed(inkPath.hasRandomSeed());
+                        m_Strokes.add(stroke);
+                    }
+                }
+            }
+            doc.recycle();
+        } catch (WILLFormatException e) {
+            throw new WILLException("Can't read the sample.will file. Reason: " + e.getLocalizedMessage() + " / Check stacktrace in the console.");
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        }
     }
 
     private void drawStrokes() {
         m_Canvas.setTarget(m_StrokesLayer);
-        //m_Canvas.clearColor();
+        m_Canvas.clearColor();
 
         for (Stroke stroke: m_Strokes){
             m_Paint.setColor(Color.RED);
