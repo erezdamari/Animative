@@ -87,9 +87,12 @@ public class MainActivity extends AppCompatActivity {
 
                 m_Canvas = InkCanvas.create(holder, new EGLRenderingContext.EGLConfiguration());
 
-                m_ViewLayer = m_Canvas.createViewLayer(width, height);
-                m_StrokesLayer = m_Canvas.createLayer(width, height);
-                m_CurrentFrameLayer = m_Canvas.createLayer(width, height);
+
+                m_ViewLayer = m_Canvas.createViewLayer(width, height);//everything in this layer is drawn to screen (it is the target layer)
+                m_StrokesLayer = m_Canvas.createLayer(width, height);//this layer draws all strokes
+                m_CurrentFrameLayer = m_Canvas.createLayer(width, height);//this layer contains all the drawings on screen.
+                //to add more drawings, we add them to this layer so on renderView() will update it.
+
                 m_Canvas.clearLayer(m_CurrentFrameLayer, Color.WHITE);
 
                 m_SolidBrush = new SolidColorBrush();
@@ -148,7 +151,9 @@ public class MainActivity extends AppCompatActivity {
         });
 
         boundaryBuilder = new BoundaryBuilder();
-        boundaryPaths = new ArrayList<Path>();
+        if(!(boundaryPaths!= null && boundaryPaths.size() > 0)) {
+            boundaryPaths = new ArrayList<Path>();
+        }
         boundaryView = new BoundaryView(this);
         //((RelativeLayout)findViewById(R.id.contentview)).addView(boundaryView,
           //      new RelativeLayout.LayoutParams(
@@ -270,16 +275,21 @@ public class MainActivity extends AppCompatActivity {
         m_PathBuilder = new SpeedPathBuilder(getResources().getDisplayMetrics().density);
         m_PathBuilder.setNormalizationConfig(100.0f, 4000.0f);
         m_PathBuilder.setMovementThreshold(2.0f);
+        //the PropertyName.Width means that each point on the path is defined by a set of x,y,width
+        //so each point has three values
         m_PathBuilder.setPropertyConfig(PropertyName.Width, 10f, 40f, Float.NaN, Float.NaN, PropertyFunction.Power, 1.0f, false);
-        m_PathStride  = m_PathBuilder.getStride();
+        m_PathStride  = m_PathBuilder.getStride(); //how much of values defines each point
     }
 
+    /**
+     * specifies how to draw each stroke
+     */
     private void createStrokePaint()
     {
         m_Paint = new StrokePaint();
         m_Paint.setStrokeBrush(m_SolidBrush);
         m_Paint.setColor(Color.BLUE);// Particle brush.
-        m_Paint.setWidth(Float.NaN);
+        m_Paint.setWidth(Float.NaN);//draw it with width
     }
 
     private class BoundaryView extends View {
@@ -296,6 +306,7 @@ public class MainActivity extends AppCompatActivity {
         @Override
         protected void onDraw(Canvas canvas) {
             super.onDraw(canvas);
+
 
             for(Path path : boundaryPaths) {
                 canvas.drawPath(path, paint);
