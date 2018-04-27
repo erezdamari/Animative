@@ -1,9 +1,8 @@
-package com.example.erezd.animative.serialization;
+package com.example.erezd.animative.utilities.serialization;
 
 import android.net.Uri;
 import android.support.annotation.NonNull;
 
-import com.example.erezd.animative.activities.Stroke;
 import com.wacom.ink.serialization.InkDecoder;
 import com.wacom.ink.serialization.InkEncoder;
 import com.wacom.ink.utils.Utils;

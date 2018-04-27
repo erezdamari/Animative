@@ -1,4 +1,4 @@
-package com.example.erezd.animative.activities;
+package com.example.erezd.animative.utilities.serialization;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;

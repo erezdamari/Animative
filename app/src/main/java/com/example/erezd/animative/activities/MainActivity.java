@@ -1,6 +1,5 @@
 package com.example.erezd.animative.activities;
 
-import android.app.Activity;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -8,26 +7,20 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.net.Uri;
 import android.os.Bundle;
-import android.os.PersistableBundle;
 import android.support.v7.app.AppCompatActivity;
-import android.util.Log;
 import android.view.MotionEvent;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
-import android.view.View.OnTouchListener;
-import android.widget.Button;
-import android.widget.RelativeLayout;
 import android.widget.Toast;
 
 import com.example.erezd.animative.R;
-import com.example.erezd.animative.serialization.StrokeSerializer;
-import com.wacom.ink.boundary.Boundary;
+import com.example.erezd.animative.utilities.serialization.Stroke;
+import com.example.erezd.animative.utilities.serialization.StrokeSerializer;
 import com.wacom.ink.boundary.BoundaryBuilder;
 import com.wacom.ink.path.PathBuilder.PropertyFunction;
 import com.wacom.ink.path.PathBuilder.PropertyName;
 import com.wacom.ink.path.PathUtils;
-import com.wacom.ink.path.PathUtils.Phase;
 import com.wacom.ink.path.SpeedPathBuilder;
 import com.wacom.ink.rasterization.BlendMode;
 import com.wacom.ink.rasterization.InkCanvas;
@@ -37,9 +30,7 @@ import com.wacom.ink.rasterization.SolidColorBrush;
 import com.wacom.ink.rasterization.StrokePaint;
 import com.wacom.ink.rasterization.StrokeRenderer;
 import com.wacom.ink.rendering.EGLRenderingContext;
-import com.wacom.ink.rendering.EGLRenderingContext.EGLConfiguration;
 import com.wacom.ink.smooth.MultiChannelSmoothener;
-import com.wacom.ink.smooth.MultiChannelSmoothener.SmoothingResult;
 
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
