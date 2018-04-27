@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">Animative</string>
+    <string name="FILE_SAVE_NAME">will.bin</string>
 </resources>
