@@ -1,28 +1,28 @@
 package com.example.erezd.animative.activities;
 
-import android.app.Activity;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Path;
+import android.net.Uri;
 import android.os.Bundle;
 import android.support.v7.app.AppCompatActivity;
+import android.util.Log;
 import android.view.MotionEvent;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
-import android.view.View.OnTouchListener;
-import android.widget.Button;
-import android.widget.RelativeLayout;
+import android.widget.Toast;
 
 import com.example.erezd.animative.R;
-import com.wacom.ink.boundary.Boundary;
+import com.example.erezd.animative.utilities.serialization.Stroke;
+import com.example.erezd.animative.utilities.serialization.StrokeSerializer;
 import com.wacom.ink.boundary.BoundaryBuilder;
+import com.wacom.ink.manipulation.Intersector;
 import com.wacom.ink.path.PathBuilder.PropertyFunction;
 import com.wacom.ink.path.PathBuilder.PropertyName;
 import com.wacom.ink.path.PathUtils;
-import com.wacom.ink.path.PathUtils.Phase;
 import com.wacom.ink.path.SpeedPathBuilder;
 import com.wacom.ink.rasterization.BlendMode;
 import com.wacom.ink.rasterization.InkCanvas;
@@ -32,12 +32,12 @@ import com.wacom.ink.rasterization.SolidColorBrush;
 import com.wacom.ink.rasterization.StrokePaint;
 import com.wacom.ink.rasterization.StrokeRenderer;
 import com.wacom.ink.rendering.EGLRenderingContext;
-import com.wacom.ink.rendering.EGLRenderingContext.EGLConfiguration;
 import com.wacom.ink.smooth.MultiChannelSmoothener;
-import com.wacom.ink.smooth.MultiChannelSmoothener.SmoothingResult;
 
+import java.io.IOException;
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
+import java.util.LinkedList;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -50,22 +50,69 @@ public class MainActivity extends AppCompatActivity {
     private ParticleBrush m_ParticleBrush;
     private StrokePaint m_Paint;
     private StrokeRenderer m_StrokeRenderer;
-    private boolean m_IsButtonClicked = false;
+    private boolean m_IsDrawClicked = false;
+    private boolean m_isEraserClicked = false;
     private MultiChannelSmoothener m_Smoothener;
-
+    private ArrayList<FloatBuffer> paths=null;
     private BoundaryBuilder boundaryBuilder;
     private ArrayList<Path> boundaryPaths;
     private BoundaryView boundaryView;
+
+    //a list of strokes to save
+    private LinkedList<Stroke> strokesList = new LinkedList<Stroke>();
+    //the encode/decode instance
+    private StrokeSerializer serializer;
+    //checks for intersections of strokes. used by the eraser.
+    private Intersector<Stroke> intersector;
+
+
+    void drawthem(){
+        FloatBuffer path = paths.get(0);
+
+        //path.flip();
+
+        MultiChannelSmoothener.SmoothingResult smoothingResult = m_Smoothener.smooth(path, path.array().length, true);
+        // Add the smoothed control points to the path builder.
+        m_PathBuilder.addPathPart(smoothingResult.getSmoothedPoints(), smoothingResult.getSize());
+        m_StrokeRenderer.drawPoints(m_PathBuilder.getPathBuffer(), m_PathBuilder.getPathLastUpdatePosition(), m_PathBuilder.getAddedPointsSize(),true);
+        m_Canvas.setTarget(m_CurrentFrameLayer, m_StrokeRenderer.getStrokeUpdatedArea());
+        m_Canvas.clearColor(Color.WHITE);
+        m_Canvas.drawLayer(m_StrokesLayer, BlendMode.BLENDMODE_NORMAL);
+        m_StrokeRenderer.blendStrokeUpdatedArea(m_CurrentFrameLayer, BlendMode.BLENDMODE_NORMAL);
+      //  renderView();
+    }
+
+    @Override
+    public void onSaveInstanceState(Bundle outState) {
+        //outState.putSerializable("paths", boundaryPaths);
+        if(strokesList != null)
+            serializer.serialize(Uri.fromFile(getFileStreamPath(getString(R.string.FILE_BIN_SAVE_NAME)+ ".bin")), strokesList);
+        super.onSaveInstanceState(outState);
+    }
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        if(serializer == null)
+            serializer = new StrokeSerializer();
+
+        //saves previous paths
+        if(savedInstanceState!=null && !savedInstanceState.isEmpty()) {
+            Object tmp = savedInstanceState.getSerializable("paths");
+            try {
+                boundaryPaths = (ArrayList<Path>) tmp;
+            }catch(Exception e){e.printStackTrace();}
+        }
+
         createPathBuilder();
 
+        if(paths == null)
+            paths = new ArrayList<>();
+
         SV = findViewById(R.id.surfaceView);
-        //m_CopyButton = findViewById(R.id.buttonCopy);
 
         SV.getHolder().addCallback(new SurfaceHolder.Callback(){
             @Override
@@ -92,11 +139,25 @@ public class MainActivity extends AppCompatActivity {
 
                 m_StrokeRenderer = new StrokeRenderer(m_Canvas, m_Paint, m_PathStride, width, height);
 
+               /* if(paths != null && paths.size()>0){
+                    drawthem();
+                }
+*/
+
+                intersector = new Intersector<Stroke>();
+
+               //USE A THREAD HERE
+                loadStrokes(Uri.fromFile(getFileStreamPath(getString(R.string.FILE_BIN_SAVE_NAME)+ ".bin")));
+
+
+                drawStrokes(strokesList);
                 renderView();
             }
 
+
             @Override
             public void surfaceCreated(SurfaceHolder holder) {
+
 
             }
 
@@ -108,58 +169,139 @@ public class MainActivity extends AppCompatActivity {
 
         });
 
+
         SV.setOnTouchListener(new View.OnTouchListener() {
+
             @Override
             public boolean onTouch(View v, MotionEvent event) {
-                if(m_IsButtonClicked) {
-                    buildPath(event);
+                Log.d("demo", m_IsDrawClicked +" " + m_isEraserClicked);
+                if(m_IsDrawClicked) {
+
+                    boolean bFinished = buildPath(event);
                     drawStroke(event);
                     renderView();
+
+                    //saves the new add stroke to the list
+                    if (bFinished){
+                        Stroke stroke = new Stroke();
+                        stroke.copyPoints(m_PathBuilder.getPathBuffer(), 0, m_PathBuilder.getPathSize());
+                        stroke.setStride(m_PathBuilder.getStride());
+                        stroke.setWidth(Float.NaN);//NaN means the width is a part of the stride(size of a set of points)
+                        stroke.setColor(m_Paint.getColor());
+                        stroke.setInterval(0.0f, 1.0f);
+                        stroke.setBlendMode(BlendMode.BLENDMODE_NORMAL);
+                        stroke.calculateBounds();
+                        strokesList.add(stroke);
+
+                        Toast.makeText(MainActivity.this, "We have " + strokesList.size()
+                                + " strokes in the list.", Toast.LENGTH_SHORT).show();
+                    }
+
+                    return true;
+                }
+                else if(m_isEraserClicked){
+                    buildPath(event);
+                    if (strokesList.size()>0) {
+                        //set the target to compare with.
+                        //in this case is the user currently touch's path points
+                        intersector.setTargetAsStroke(m_PathBuilder.getPathBuffer(), m_PathBuilder.getPathLastUpdatePosition(), m_PathBuilder.getAddedPointsSize(), m_PathStride);
+                        LinkedList<Stroke> removedStrokes = new LinkedList<Stroke>();
+                        //loop through each of the drawn strokes to check if it intersect with the user touch
+                        for (Stroke stroke: strokesList){
+                            if (intersector.isIntersectingTarget(stroke)){
+                                removedStrokes.add(stroke);
+                            }
+                        }
+                        strokesList.removeAll(removedStrokes);
+                        drawStrokes(strokesList);
+                        renderView();
+                    }
                     return true;
                 }
 
                 return false;
             }
+
         });
 
-        boundaryBuilder = new BoundaryBuilder();
-        if(!(boundaryPaths!= null && boundaryPaths.size() > 0)) {
-            boundaryPaths = new ArrayList<Path>();
+
+
+
+    /*   if(boundaryBuilder == null) {
+            boundaryBuilder = new BoundaryBuilder();
+            if (boundaryPaths == null) {
+                boundaryPaths = new ArrayList<Path>();
+            }
         }
         boundaryView = new BoundaryView(this);
-        //((RelativeLayout)findViewById(R.id.contentview)).addView(boundaryView,
-          //      new RelativeLayout.LayoutParams(
-            //            RelativeLayout.LayoutParams.MATCH_PARENT,
-              //          RelativeLayout.LayoutParams.MATCH_PARENT));
+        ((RelativeLayout)findViewById(R.id.contentview)).addView(boundaryView,
+                new RelativeLayout.LayoutParams(
+                        RelativeLayout.LayoutParams.MATCH_PARENT,
+                        RelativeLayout.LayoutParams.MATCH_PARENT));
+*/
 
     }
 
-    public void buttonDraw_OnClick(View view)
-    {
-        if(!m_IsButtonClicked)
-        {
-            m_IsButtonClicked = true;
+
+    public void buttonDraw_OnClick(View view) {
+        //if any of the buttons is pressed
+        boolean aButtonIsActive = false;
+
+        switch (view.getId()){
+            case R.id.buttonDraw:
+                aButtonIsActive = m_IsDrawClicked = !m_IsDrawClicked;
+                break;
+            case R.id.buttonPath:
+                break;
+            case R.id.buttonEraser:
+                aButtonIsActive = m_isEraserClicked = !m_isEraserClicked;
+                break;
+            default:
+                return;
+        }
+
+        if(aButtonIsActive){
             view.setBackgroundColor(Color.RED);
+            disableOthers(view.getId());
         }
-        else
-        {
-            m_IsButtonClicked = false;
-            view.setBackgroundColor(Color.BLUE);
+        else{
+            view.setBackgroundResource(android.R.drawable.btn_default);
+        }
+
+    }
+
+
+    private void disableOthers(int buttonClickedId){
+        switch(buttonClickedId){
+            case R.id.buttonDraw:
+                findViewById(R.id.buttonPath).setBackgroundResource(android.R.drawable.btn_default);
+                findViewById(R.id.buttonEraser).setBackgroundResource(android.R.drawable.btn_default);
+                m_isEraserClicked = false;
+                break;
+            case R.id.buttonPath:
+                findViewById(R.id.buttonDraw).setBackgroundResource(android.R.drawable.btn_default);
+                findViewById(R.id.buttonEraser).setBackgroundResource(android.R.drawable.btn_default);
+                m_IsDrawClicked = m_isEraserClicked = false;
+                break;
+            case R.id.buttonEraser:
+                findViewById(R.id.buttonDraw).setBackgroundResource(android.R.drawable.btn_default);
+                findViewById(R.id.buttonPath).setBackgroundResource(android.R.drawable.btn_default);
+                m_IsDrawClicked = false;
+                break;
         }
     }
+
 
     public void buttonCopy_OnClick(View view)
     {
         FloatBuffer buffer = m_PathBuilder.getPreliminaryPathBuffer();
-
-
     }
 
-    private void buildPath(MotionEvent event) {
+    private boolean buildPath(MotionEvent event) {
         if (event.getAction() != MotionEvent.ACTION_DOWN &&
                 event.getAction() != MotionEvent.ACTION_MOVE &&
                 event.getAction() != MotionEvent.ACTION_UP) {
-            return;
+            return false;
         }
 
         if (event.getAction() == MotionEvent.ACTION_DOWN) {
@@ -168,25 +310,63 @@ public class MainActivity extends AppCompatActivity {
         }
 
         PathUtils.Phase phase = PathUtils.getPhaseFromMotionEvent(event);
+        // Add the current input point to the path builder.
         FloatBuffer part = m_PathBuilder.addPoint(phase, event.getX(), event.getY(), event.getEventTime());
+
         MultiChannelSmoothener.SmoothingResult smoothingResult;
+
         int partSize = m_PathBuilder.getPathPartSize();
         if (partSize > 0) {
+            // Smooth the returned control points (aka partial path).
             smoothingResult = m_Smoothener.smooth(part, partSize, (phase == PathUtils.Phase.END));
             // Add the smoothed control points to the path builder.
             m_PathBuilder.addPathPart(smoothingResult.getSmoothedPoints(), smoothingResult.getSize());
         }
 
-        if(event.getAction() == MotionEvent.ACTION_UP) {
-            boundaryBuilder.addPath(m_PathBuilder.getPathBuffer(), m_PathBuilder.getPathSize(), m_PathBuilder.getStride());
+      /*  if(event.getAction() == MotionEvent.ACTION_UP) {
+            /*if(partSize>0) {
+                FloatBuffer t = m_PathBuilder.getPathBuffer();
+                if (t != null) {
+
+                    float[] f = copyfloats(t, m_PathBuilder.getPathSize());
+                    FloatBuffer tmp = FloatBuffer.allocate(f.length);
+                    tmp.put(f.clone());
+                    paths.add(tmp);
+                } else
+                    Log.d("bla", "shit happens1");
+            }else Log.d("bla", "shit happens2");
+            */
+           /* boundaryBuilder.addPath(m_PathBuilder.getPathBuffer(), m_PathBuilder.getPathSize(), m_PathBuilder.getStride());
+
             Boundary boundary = boundaryBuilder.getBoundary();
             boundaryPaths.add(boundary.createPath());
             boundaryView.invalidate();
-        }
+
+        }*/
+
+        // Create a preliminary path.
+        FloatBuffer preliminaryPath = m_PathBuilder.createPreliminaryPath();
+        // Smoothen the preliminary path's control points (return inform of a partial path).
+        smoothingResult = m_Smoothener.smooth(preliminaryPath, m_PathBuilder.getPreliminaryPathSize(), true);
+        // Add the smoothed preliminary path to the path builder.
+        m_PathBuilder.finishPreliminaryPath(smoothingResult.getSmoothedPoints(), smoothingResult.getSize());
+
+        return (event.getAction()==MotionEvent.ACTION_UP && m_PathBuilder.hasFinished());
     }
 
+
+    float[] copyfloats(FloatBuffer fs, int size){
+        float[] tmp = new float[size];
+        for (int i = 0; i < size; i++) {
+            tmp[i] = fs.get(i);
+        }
+        return tmp;
+    }
+
+    //draw a stroke from 'onTouch'
     private void drawStroke(MotionEvent event) {
         m_StrokeRenderer.drawPoints(m_PathBuilder.getPathBuffer(), m_PathBuilder.getPathLastUpdatePosition(), m_PathBuilder.getAddedPointsSize(), event.getAction()==MotionEvent.ACTION_UP);
+        m_StrokeRenderer.drawPrelimPoints(m_PathBuilder.getPreliminaryPathBuffer(), 0, m_PathBuilder.getFinishedPreliminaryPathSize());
 
         if (event.getAction()!=MotionEvent.ACTION_UP){
             m_Canvas.setTarget(m_CurrentFrameLayer, m_StrokeRenderer.getStrokeUpdatedArea());
@@ -201,6 +381,25 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    //draw the strokes from the list from 'surfaceChanged'
+    private void drawStrokes(LinkedList<Stroke> strokesList) {
+        m_Canvas.setTarget(m_StrokesLayer);
+        m_Canvas.clearColor();
+
+        for (Stroke stroke: strokesList){
+            m_Paint.setColor(stroke.getColor());
+            m_StrokeRenderer.setStrokePaint(m_Paint);
+            m_StrokeRenderer.drawPoints(stroke.getPoints(), 0, stroke.getSize(),
+                    stroke.getStartValue(), stroke.getEndValue(), true);
+            m_StrokeRenderer.blendStroke(m_StrokesLayer, BlendMode.BLENDMODE_NORMAL);
+        }
+
+        m_Canvas.setTarget(m_CurrentFrameLayer);
+        m_Canvas.clearColor(Color.WHITE);
+        m_Canvas.drawLayer(m_StrokesLayer, BlendMode.BLENDMODE_NORMAL);
+    }
+
+
     private void renderView() {
         m_Canvas.setTarget(m_ViewLayer);
         m_Canvas.drawLayer(m_CurrentFrameLayer, BlendMode.BLENDMODE_OVERWRITE);
@@ -212,6 +411,15 @@ public class MainActivity extends AppCompatActivity {
         m_Canvas.dispose();
     }
 
+
+    protected void loadStrokes(Uri uri){
+        try {
+            strokesList = strokesList = serializer.deserialize(uri);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
     /*private void renderView() {
         m_Canvas.setTarget(m_ViewLayer);
         m_Canvas.clearColor(Color.RED);
@@ -220,7 +428,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void createPathBuilder()
     {
-        m_PathBuilder = new SpeedPathBuilder(getResources().getDisplayMetrics().density);
+        m_PathBuilder = new SpeedPathBuilder();
         m_PathBuilder.setNormalizationConfig(100.0f, 4000.0f);
         m_PathBuilder.setMovementThreshold(2.0f);
         //the PropertyName.Width means that each point on the path is defined by a set of x,y,width
@@ -255,10 +463,9 @@ public class MainActivity extends AppCompatActivity {
         protected void onDraw(Canvas canvas) {
             super.onDraw(canvas);
 
-
-            for(Path path : boundaryPaths) {
-                canvas.drawPath(path, paint);
-            }
+          /*  for(Path path : boundaryPaths) {
+                    canvas.drawPath(path, paint);
+            }*/
         }
     }
 }

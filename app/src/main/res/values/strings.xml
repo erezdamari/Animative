@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">Animative</string>
+    <string name="FILE_BIN_SAVE_NAME">will</string>
+    <string name="FILE_WILL_SAVE_NAME">history</string>
 </resources>
