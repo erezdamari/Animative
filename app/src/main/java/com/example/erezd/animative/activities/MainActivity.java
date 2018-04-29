@@ -8,6 +8,7 @@ import android.graphics.Path;
 import android.net.Uri;
 import android.os.Bundle;
 import android.support.v7.app.AppCompatActivity;
+import android.util.Log;
 import android.view.MotionEvent;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
@@ -18,6 +19,7 @@ import com.example.erezd.animative.R;
 import com.example.erezd.animative.utilities.serialization.Stroke;
 import com.example.erezd.animative.utilities.serialization.StrokeSerializer;
 import com.wacom.ink.boundary.BoundaryBuilder;
+import com.wacom.ink.manipulation.Intersector;
 import com.wacom.ink.path.PathBuilder.PropertyFunction;
 import com.wacom.ink.path.PathBuilder.PropertyName;
 import com.wacom.ink.path.PathUtils;
@@ -32,6 +34,7 @@ import com.wacom.ink.rasterization.StrokeRenderer;
 import com.wacom.ink.rendering.EGLRenderingContext;
 import com.wacom.ink.smooth.MultiChannelSmoothener;
 
+import java.io.IOException;
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.LinkedList;
@@ -47,7 +50,8 @@ public class MainActivity extends AppCompatActivity {
     private ParticleBrush m_ParticleBrush;
     private StrokePaint m_Paint;
     private StrokeRenderer m_StrokeRenderer;
-    private boolean m_IsButtonClicked = false;
+    private boolean m_IsDrawClicked = false;
+    private boolean m_isEraserClicked = false;
     private MultiChannelSmoothener m_Smoothener;
     private ArrayList<FloatBuffer> paths=null;
     private BoundaryBuilder boundaryBuilder;
@@ -58,6 +62,9 @@ public class MainActivity extends AppCompatActivity {
     private LinkedList<Stroke> strokesList = new LinkedList<Stroke>();
     //the encode/decode instance
     private StrokeSerializer serializer;
+    //checks for intersections of strokes. used by the eraser.
+    private Intersector<Stroke> intersector;
+
 
     void drawthem(){
         FloatBuffer path = paths.get(0);
@@ -78,8 +85,8 @@ public class MainActivity extends AppCompatActivity {
     @Override
     public void onSaveInstanceState(Bundle outState) {
         //outState.putSerializable("paths", boundaryPaths);
-        if(strokesList != null && strokesList.size() > 0)
-            serializer.serialize(Uri.fromFile(getFileStreamPath(getString(R.string.FILE_SAVE_NAME))), strokesList);
+        if(strokesList != null)
+            serializer.serialize(Uri.fromFile(getFileStreamPath(getString(R.string.FILE_BIN_SAVE_NAME)+ ".bin")), strokesList);
         super.onSaveInstanceState(outState);
     }
 
@@ -136,8 +143,12 @@ public class MainActivity extends AppCompatActivity {
                     drawthem();
                 }
 */
+
+                intersector = new Intersector<Stroke>();
+
                //USE A THREAD HERE
-                strokesList = serializer.deserialize(Uri.fromFile(getFileStreamPath(getString(R.string.FILE_SAVE_NAME))));
+                loadStrokes(Uri.fromFile(getFileStreamPath(getString(R.string.FILE_BIN_SAVE_NAME)+ ".bin")));
+
 
                 drawStrokes(strokesList);
                 renderView();
@@ -163,26 +174,48 @@ public class MainActivity extends AppCompatActivity {
 
             @Override
             public boolean onTouch(View v, MotionEvent event) {
-                if(m_IsButtonClicked) {
+                Log.d("demo", m_IsDrawClicked +" " + m_isEraserClicked);
+                if(m_IsDrawClicked) {
+
                     boolean bFinished = buildPath(event);
                     drawStroke(event);
                     renderView();
 
+                    //saves the new add stroke to the list
                     if (bFinished){
                         Stroke stroke = new Stroke();
                         stroke.copyPoints(m_PathBuilder.getPathBuffer(), 0, m_PathBuilder.getPathSize());
                         stroke.setStride(m_PathBuilder.getStride());
-                        stroke.setWidth(Float.NaN);
+                        stroke.setWidth(Float.NaN);//NaN means the width is a part of the stride(size of a set of points)
                         stroke.setColor(m_Paint.getColor());
                         stroke.setInterval(0.0f, 1.0f);
                         stroke.setBlendMode(BlendMode.BLENDMODE_NORMAL);
-
+                        stroke.calculateBounds();
                         strokesList.add(stroke);
 
                         Toast.makeText(MainActivity.this, "We have " + strokesList.size()
                                 + " strokes in the list.", Toast.LENGTH_SHORT).show();
                     }
 
+                    return true;
+                }
+                else if(m_isEraserClicked){
+                    buildPath(event);
+                    if (strokesList.size()>0) {
+                        //set the target to compare with.
+                        //in this case is the user currently touch's path points
+                        intersector.setTargetAsStroke(m_PathBuilder.getPathBuffer(), m_PathBuilder.getPathLastUpdatePosition(), m_PathBuilder.getAddedPointsSize(), m_PathStride);
+                        LinkedList<Stroke> removedStrokes = new LinkedList<Stroke>();
+                        //loop through each of the drawn strokes to check if it intersect with the user touch
+                        for (Stroke stroke: strokesList){
+                            if (intersector.isIntersectingTarget(stroke)){
+                                removedStrokes.add(stroke);
+                            }
+                        }
+                        strokesList.removeAll(removedStrokes);
+                        drawStrokes(strokesList);
+                        renderView();
+                    }
                     return true;
                 }
 
@@ -209,20 +242,54 @@ public class MainActivity extends AppCompatActivity {
 
     }
 
-    public void buttonDraw_OnClick(View view)
-    {
-        if(!m_IsButtonClicked)
-        {
-            m_IsButtonClicked = true;
+
+    public void buttonDraw_OnClick(View view) {
+        //if any of the buttons is pressed
+        boolean aButtonIsActive = false;
+
+        switch (view.getId()){
+            case R.id.buttonDraw:
+                aButtonIsActive = m_IsDrawClicked = !m_IsDrawClicked;
+                break;
+            case R.id.buttonPath:
+                break;
+            case R.id.buttonEraser:
+                aButtonIsActive = m_isEraserClicked = !m_isEraserClicked;
+                break;
+            default:
+                return;
+        }
+
+        if(aButtonIsActive){
             view.setBackgroundColor(Color.RED);
+            disableOthers(view.getId());
         }
-        else
-        {
-            m_IsButtonClicked = false;
-            view.setBackgroundColor(Color.BLUE);
+        else{
+            view.setBackgroundResource(android.R.drawable.btn_default);
         }
+
     }
 
+
+    private void disableOthers(int buttonClickedId){
+        switch(buttonClickedId){
+            case R.id.buttonDraw:
+                findViewById(R.id.buttonPath).setBackgroundResource(android.R.drawable.btn_default);
+                findViewById(R.id.buttonEraser).setBackgroundResource(android.R.drawable.btn_default);
+                m_isEraserClicked = false;
+                break;
+            case R.id.buttonPath:
+                findViewById(R.id.buttonDraw).setBackgroundResource(android.R.drawable.btn_default);
+                findViewById(R.id.buttonEraser).setBackgroundResource(android.R.drawable.btn_default);
+                m_IsDrawClicked = m_isEraserClicked = false;
+                break;
+            case R.id.buttonEraser:
+                findViewById(R.id.buttonDraw).setBackgroundResource(android.R.drawable.btn_default);
+                findViewById(R.id.buttonPath).setBackgroundResource(android.R.drawable.btn_default);
+                m_IsDrawClicked = false;
+                break;
+        }
+    }
 
 
     public void buttonCopy_OnClick(View view)
@@ -276,6 +343,7 @@ public class MainActivity extends AppCompatActivity {
             boundaryView.invalidate();
 
         }*/
+
         // Create a preliminary path.
         FloatBuffer preliminaryPath = m_PathBuilder.createPreliminaryPath();
         // Smoothen the preliminary path's control points (return inform of a partial path).
@@ -295,7 +363,7 @@ public class MainActivity extends AppCompatActivity {
         return tmp;
     }
 
-    //draw a stroke from onTouch
+    //draw a stroke from 'onTouch'
     private void drawStroke(MotionEvent event) {
         m_StrokeRenderer.drawPoints(m_PathBuilder.getPathBuffer(), m_PathBuilder.getPathLastUpdatePosition(), m_PathBuilder.getAddedPointsSize(), event.getAction()==MotionEvent.ACTION_UP);
         m_StrokeRenderer.drawPrelimPoints(m_PathBuilder.getPreliminaryPathBuffer(), 0, m_PathBuilder.getFinishedPreliminaryPathSize());
@@ -313,7 +381,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    //draw the strokes from the list from surfaceChanged
+    //draw the strokes from the list from 'surfaceChanged'
     private void drawStrokes(LinkedList<Stroke> strokesList) {
         m_Canvas.setTarget(m_StrokesLayer);
         m_Canvas.clearColor();
@@ -341,6 +409,15 @@ public class MainActivity extends AppCompatActivity {
     private void releaseResources(){
         m_StrokeRenderer.dispose();
         m_Canvas.dispose();
+    }
+
+
+    protected void loadStrokes(Uri uri){
+        try {
+            strokesList = strokesList = serializer.deserialize(uri);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     /*private void renderView() {

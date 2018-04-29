@@ -1,13 +1,17 @@
 package com.example.erezd.animative.utilities.serialization;
 
+import android.graphics.RectF;
+
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 
+import com.wacom.ink.manipulation.Intersectable;
+import com.wacom.ink.path.PathBuilder;
 import com.wacom.ink.rasterization.BlendMode;
 import com.wacom.ink.utils.Utils;
 
-public class Stroke{
+public class Stroke implements Intersectable{
 	
 	private FloatBuffer points;
 	private int color;
@@ -20,12 +24,16 @@ public class Stroke{
 	private int paintIndex;
 	private int seed;
 	private boolean hasRandomSeed;
+
+	private FloatBuffer segmentsBounds;
+	private RectF bounds;
 	
 	public Stroke(){
-		
+		bounds = new RectF();
 	}
 	
 	public Stroke(int size) {
+		this();
 		setPoints(Utils.createNativeFloatBufferBySize(size), size);
 		//default values
 		startT = 0.0f;
@@ -70,6 +78,16 @@ public class Stroke{
 
 	public float getEndValue() {
 		return endT;
+	}
+
+	@Override
+	public FloatBuffer getSegmentsBounds() {
+		return segmentsBounds;
+	}
+
+	@Override
+	public RectF getBounds() {
+		return bounds;
 	}
 
 	public void setInterval(float startT, float endT) {
@@ -118,6 +136,28 @@ public class Stroke{
 	
 	public boolean hasRandomSeed() {
 		return hasRandomSeed;
+	}
+
+
+	public void calculateBounds(){
+		//a segment is a rectangle of float values
+		RectF segmentBounds = new RectF();
+		Utils.invalidateRectF(bounds);
+		//Allocate a float buffer to hold the segments' bounds.
+		//each segment has 4 fields
+		FloatBuffer segmentsBounds = Utils.createNativeFloatBuffer(PathBuilder.calculateSegmentsCount(size, stride) * 4);
+		//set the buffer at position 0
+		segmentsBounds.position(0);
+
+		for (int index=0;index<PathBuilder.calculateSegmentsCount(size, stride);index++){
+			PathBuilder.calculateSegmentBounds(getPoints(), getStride(), getWidth(), index, 0.0f, segmentBounds);
+			segmentsBounds.put(segmentBounds.left); //left x
+			segmentsBounds.put(segmentBounds.top); //left y
+			segmentsBounds.put(segmentBounds.width());
+			segmentsBounds.put(segmentBounds.height());
+			Utils.uniteWith(bounds, segmentBounds);
+		}
+		this.segmentsBounds = segmentsBounds;
 	}
 	
 }

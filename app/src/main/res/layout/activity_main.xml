@@ -24,7 +24,7 @@
 
             <Button
                 android:id="@+id/buttonDraw"
-                android:layout_width="200dp"
+                android:layout_width="150dp"
                 android:layout_height="90dp"
                 android:onClick="buttonDraw_OnClick"
                 android:text="Draw"
@@ -33,9 +33,18 @@
 
             <Button
                 android:id="@+id/buttonPath"
-                android:layout_width="200dp"
+                android:layout_width="150dp"
                 android:layout_height="90dp"
                 android:text="Path"
+                android:onClick="buttonDraw_OnClick"
+                android:textSize="25sp"
+                android:textColor="#000000"/>
+            <Button
+                android:id="@+id/buttonEraser"
+                android:layout_width="150dp"
+                android:layout_height="90dp"
+                android:text="Erase"
+                android:onClick="buttonDraw_OnClick"
                 android:textSize="25sp"
                 android:textColor="#000000"/>
 
