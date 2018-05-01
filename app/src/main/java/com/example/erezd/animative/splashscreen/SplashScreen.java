@@ -10,7 +10,7 @@ import com.example.erezd.animative.activities.MainActivity;
 
 public class SplashScreen extends AppCompatActivity {
 
-    private final int SPLASH_DELAY = 2000;
+    private final int SPLASH_DELAY = 1000;
     private final Handler mHandler = new Handler();
     private final Launcher mLauncher = new Launcher();
     private boolean visible = true, forceStart=false;

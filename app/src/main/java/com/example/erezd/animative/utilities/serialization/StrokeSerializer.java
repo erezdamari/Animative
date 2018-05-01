@@ -216,8 +216,8 @@ public class StrokeSerializer {
             stroke.setWidth(decoder.getDecodedPathWidth());
             stroke.setBlendMode(decoder.getDecodedBlendMode());
             Utils.copyFloatBuffer(decoder.getDecodedPathData(), stroke.getPoints(), 0, 0, decoder.getDecodedPathSize());
-
-           // stroke.calculateBounds();
+            stroke.getPoints().position(0);
+            stroke.calculateBounds();
 
             result.add(stroke);//add the stroke to the list
         }

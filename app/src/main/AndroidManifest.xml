@@ -10,7 +10,8 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
 
-        <activity android:name=".activities.MainActivity" />
+        <activity android:name=".activities.MainActivity"
+            android:screenOrientation="landscape"/>
 
         <activity android:name=".splashscreen.SplashScreen"
             android:theme="@style/SplashTheme">

@@ -37,7 +37,28 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
+                android:onClick="buttonDraw_OnClick"
                 android:text="Path"
+                android:textSize="25sp"
+                android:textColor="#000000" />
+
+            <Button
+                android:id="@+id/buttonEraser"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:onClick="buttonDraw_OnClick"
+                android:text="Erase"
+                android:textSize="25sp"
+                android:textColor="#000000" />
+
+            <Button
+                android:id="@+id/buttonSelect"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:onClick="buttonDraw_OnClick"
+                android:text="Select"
                 android:textSize="25sp"
                 android:textColor="#000000" />
 
@@ -56,6 +77,13 @@
                     android:text="Speed:"
                     android:textSize="25sp"
                     android:textColor="#000000"/>
+                <TextView
+                    android:id="@+id/progressVal"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="15"
+                    android:textSize="25sp"
+                    android:textColor="#000000"/>
 
                 <SeekBar
                     android:id="@+id/seekBar"
@@ -64,7 +92,7 @@
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:progressDrawable="@drawable/custom_seekbar_thumb"
-                    android:progress="5"
+                    android:progress="2"
                     android:max="15"/>
         </LinearLayout>
 
@@ -75,6 +103,7 @@
             <Button
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:id="@+id/buttonPreview"
                 android:text="Preview"
                 android:textSize="25sp"
                 android:textColor="#000000"

@@ -1,11 +1,13 @@
 package com.example.erezd.animative.activities;
 
+import android.annotation.SuppressLint;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.net.Uri;
+import android.os.AsyncTask;
 import android.os.Bundle;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
@@ -13,9 +15,14 @@ import android.view.MotionEvent;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
+import android.widget.SeekBar;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import com.example.erezd.animative.R;
+import com.example.erezd.animative.ui.SeekBarListener;
+import com.example.erezd.animative.utilities.AnimeTask;
+import com.example.erezd.animative.utilities.PointCalc;
 import com.example.erezd.animative.utilities.serialization.Stroke;
 import com.example.erezd.animative.utilities.serialization.StrokeSerializer;
 import com.wacom.ink.boundary.BoundaryBuilder;
@@ -34,12 +41,30 @@ import com.wacom.ink.rasterization.StrokeRenderer;
 import com.wacom.ink.rendering.EGLRenderingContext;
 import com.wacom.ink.smooth.MultiChannelSmoothener;
 
-import java.io.IOException;
+
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.LinkedList;
 
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends AppCompatActivity implements AnimeTask.AnimeResultListener {
+
+    public int counterSelected =0;
+    private Stroke start;
+    private Stroke end;
+    private static boolean isStopped = false;
+
+    @Override
+    protected void onStop() {
+        isStopped = true;
+        counterSelected=0;
+        super.onStop();
+    }
+
+    public static boolean IsVisible(){
+        return !isStopped;
+    }
+
+    private SeekBar m_SeekBar;
 
     private SurfaceView SV;
     private InkCanvas m_Canvas;
@@ -49,9 +74,12 @@ public class MainActivity extends AppCompatActivity {
     private SolidColorBrush m_SolidBrush;
     private ParticleBrush m_ParticleBrush;
     private StrokePaint m_Paint;
+    private StrokePaint m_selectionPaint;
     private StrokeRenderer m_StrokeRenderer;
     private boolean m_IsDrawClicked = false;
+    private boolean m_isPathClicked = false;
     private boolean m_isEraserClicked = false;
+    private boolean m_isSelectClicked = false;
     private MultiChannelSmoothener m_Smoothener;
     private ArrayList<FloatBuffer> paths=null;
     private BoundaryBuilder boundaryBuilder;
@@ -65,7 +93,7 @@ public class MainActivity extends AppCompatActivity {
     //checks for intersections of strokes. used by the eraser.
     private Intersector<Stroke> intersector;
 
-
+/*
     void drawthem(){
         FloatBuffer path = paths.get(0);
 
@@ -80,7 +108,7 @@ public class MainActivity extends AppCompatActivity {
         m_Canvas.drawLayer(m_StrokesLayer, BlendMode.BLENDMODE_NORMAL);
         m_StrokeRenderer.blendStrokeUpdatedArea(m_CurrentFrameLayer, BlendMode.BLENDMODE_NORMAL);
       //  renderView();
-    }
+    }*/
 
     @Override
     public void onSaveInstanceState(Bundle outState) {
@@ -91,26 +119,39 @@ public class MainActivity extends AppCompatActivity {
     }
 
 
+    @SuppressLint("ClickableViewAccessibility")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        m_SeekBar = findViewById(R.id.seekBar);
+        m_SeekBar.setOnSeekBarChangeListener(new SeekBarListener(m_SeekBar.getProgress(), 1, (TextView)findViewById(R.id.progressVal)));
+
+
         if(serializer == null)
             serializer = new StrokeSerializer();
 
-        //saves previous paths
+       /* //saves previous paths
         if(savedInstanceState!=null && !savedInstanceState.isEmpty()) {
             Object tmp = savedInstanceState.getSerializable("paths");
             try {
                 boundaryPaths = (ArrayList<Path>) tmp;
             }catch(Exception e){e.printStackTrace();}
-        }
+        }*/
 
         createPathBuilder();
 
-        if(paths == null)
-            paths = new ArrayList<>();
+        findViewById(R.id.buttonPreview).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                if(counterSelected == 2)
+                    new AnimeTask(MainActivity.this, m_SeekBar.getProgress()).execute(start, end);
+            }
+        });
+
+        /*if(paths == null)
+            paths = new ArrayList<>();*/
 
         SV = findViewById(R.id.surfaceView);
 
@@ -133,6 +174,8 @@ public class MainActivity extends AppCompatActivity {
 
                 m_SolidBrush = new SolidColorBrush();
                 createStrokePaint();
+                createSelectPaint();
+
 
                 m_Smoothener = new MultiChannelSmoothener(m_PathStride);
                 m_Smoothener.enableChannel(2);
@@ -170,6 +213,7 @@ public class MainActivity extends AppCompatActivity {
         });
 
 
+        //noinspection AndroidLintClickableViewAccessibility
         SV.setOnTouchListener(new View.OnTouchListener() {
 
             @Override
@@ -204,7 +248,8 @@ public class MainActivity extends AppCompatActivity {
                     if (strokesList.size()>0) {
                         //set the target to compare with.
                         //in this case is the user currently touch's path points
-                        intersector.setTargetAsStroke(m_PathBuilder.getPathBuffer(), m_PathBuilder.getPathLastUpdatePosition(), m_PathBuilder.getAddedPointsSize(), m_PathStride);
+                        intersector.setTargetAsStroke(m_PathBuilder.getPathBuffer(), m_PathBuilder.getPathLastUpdatePosition(),
+                                m_PathBuilder.getAddedPointsSize(), m_PathStride);
                         LinkedList<Stroke> removedStrokes = new LinkedList<Stroke>();
                         //loop through each of the drawn strokes to check if it intersect with the user touch
                         for (Stroke stroke: strokesList){
@@ -218,11 +263,44 @@ public class MainActivity extends AppCompatActivity {
                     }
                     return true;
                 }
+                else if(m_isSelectClicked) {
+
+                    buildPath(event);
+                    if (event.getAction() == MotionEvent.ACTION_UP && counterSelected < 2){
+                        if (strokesList.size()>0) {
+
+                            //I CHANGED THE INTERSECTOR CODE HERE, see the tutorial for selecting the whole stroke
+                            intersector.setTargetAsStroke(m_PathBuilder.getPathBuffer(), m_PathBuilder.getPathLastUpdatePosition(),
+                                    m_PathBuilder.getAddedPointsSize(), m_PathStride);
+
+                            for (Stroke stroke: strokesList){
+                                if (intersector.isIntersectingTarget(stroke)){
+                                    if (++counterSelected == 1)
+                                        start = stroke;
+                                    else
+                                        end = stroke;
+
+                                    if (stroke.getColor()==Color.RED){
+                                        stroke.setColor(Color.BLUE);
+                                    } else {
+                                        stroke.setColor(Color.RED);
+                                    }
+                                }
+                            }
+                            drawStrokes(strokesList);
+                            renderView();
+                        }
+                    }
+                    return true;
+               //  to choose only parts of the stroke-> return SelectMethod(event);
+                }
 
                 return false;
             }
 
-        });
+        }
+
+        );
 
 
 
@@ -252,9 +330,13 @@ public class MainActivity extends AppCompatActivity {
                 aButtonIsActive = m_IsDrawClicked = !m_IsDrawClicked;
                 break;
             case R.id.buttonPath:
+                aButtonIsActive = m_isPathClicked = !m_isPathClicked;
                 break;
             case R.id.buttonEraser:
                 aButtonIsActive = m_isEraserClicked = !m_isEraserClicked;
+                break;
+            case R.id.buttonSelect:
+                aButtonIsActive = m_isSelectClicked = !m_isSelectClicked;
                 break;
             default:
                 return;
@@ -276,17 +358,26 @@ public class MainActivity extends AppCompatActivity {
             case R.id.buttonDraw:
                 findViewById(R.id.buttonPath).setBackgroundResource(android.R.drawable.btn_default);
                 findViewById(R.id.buttonEraser).setBackgroundResource(android.R.drawable.btn_default);
-                m_isEraserClicked = false;
+                findViewById(R.id.buttonSelect).setBackgroundResource(android.R.drawable.btn_default);
+                m_isEraserClicked = m_isPathClicked = m_isSelectClicked = false;
                 break;
             case R.id.buttonPath:
                 findViewById(R.id.buttonDraw).setBackgroundResource(android.R.drawable.btn_default);
                 findViewById(R.id.buttonEraser).setBackgroundResource(android.R.drawable.btn_default);
-                m_IsDrawClicked = m_isEraserClicked = false;
+                findViewById(R.id.buttonSelect).setBackgroundResource(android.R.drawable.btn_default);
+                m_IsDrawClicked = m_isEraserClicked = m_isSelectClicked = false;
                 break;
             case R.id.buttonEraser:
                 findViewById(R.id.buttonDraw).setBackgroundResource(android.R.drawable.btn_default);
                 findViewById(R.id.buttonPath).setBackgroundResource(android.R.drawable.btn_default);
-                m_IsDrawClicked = false;
+                findViewById(R.id.buttonSelect).setBackgroundResource(android.R.drawable.btn_default);
+                m_IsDrawClicked = m_isPathClicked = m_isSelectClicked = false;
+                break;
+            case R.id.buttonSelect:
+                findViewById(R.id.buttonDraw).setBackgroundResource(android.R.drawable.btn_default);
+                findViewById(R.id.buttonEraser).setBackgroundResource(android.R.drawable.btn_default);
+                findViewById(R.id.buttonPath).setBackgroundResource(android.R.drawable.btn_default);
+                m_IsDrawClicked = m_isPathClicked = m_isEraserClicked = false;
                 break;
         }
     }
@@ -382,7 +473,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     //draw the strokes from the list from 'surfaceChanged'
-    private void drawStrokes(LinkedList<Stroke> strokesList) {
+    public synchronized void drawStrokes(LinkedList<Stroke> strokesList) {
         m_Canvas.setTarget(m_StrokesLayer);
         m_Canvas.clearColor();
 
@@ -400,7 +491,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
 
-    private void renderView() {
+    public synchronized void renderView() {
         m_Canvas.setTarget(m_ViewLayer);
         m_Canvas.drawLayer(m_CurrentFrameLayer, BlendMode.BLENDMODE_OVERWRITE);
         m_Canvas.invalidate();
@@ -414,11 +505,68 @@ public class MainActivity extends AppCompatActivity {
 
     protected void loadStrokes(Uri uri){
         try {
-            strokesList = strokesList = serializer.deserialize(uri);
+            strokesList = serializer.deserialize(uri);
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
+
+
+    //this method performs the select action
+    private boolean SelectMethod(MotionEvent event){
+        boolean bFinished = buildPath(event);
+
+        if (bFinished) {
+
+            if (strokesList.size() > 0) {
+                intersector.setTargetAsClosedPath(m_PathBuilder.getPathBuffer(), 0, m_PathBuilder.getPathSize(), m_PathStride);
+                LinkedList<Stroke> removedStrokes = new LinkedList<Stroke>();
+                LinkedList<Stroke> newStrokes = new LinkedList<Stroke>();
+
+                for (Stroke stroke : strokesList) {
+                    Intersector.IntersectionResult intersection = intersector.intersectWithTarget(stroke);
+                    if (intersection.getCount() == 1) {
+                        Intersector.IntervalIterator iterator = intersection.getIterator();
+                        Intersector.Interval interval = iterator.next();
+                        if (interval.inside) {
+                            stroke.setColor(Color.RED);
+                        }
+                    } else if (intersection.getCount() > 1) {
+                        removedStrokes.add(stroke);
+                        Intersector.IntervalIterator iterator = intersection.getIterator();
+                        while (iterator.hasNext()) {
+                            Intersector.Interval interval = iterator.next();
+                            int size = interval.toIndex - interval.fromIndex + stroke.getStride();
+
+                            Stroke newStroke = new Stroke(size);
+
+                            newStroke.copyPoints(stroke.getPoints(), interval.fromIndex, size);
+                            newStroke.setStride(stroke.getStride());
+                            newStroke.setColor(stroke.getColor());
+                            newStroke.setWidth(stroke.getWidth());
+                            newStroke.setBlendMode(stroke.getBlendMode());
+                            newStroke.setInterval(interval.fromValue, interval.toValue);
+                            newStroke.calculateBounds();
+
+                            if (interval.inside) {
+                                newStroke.setColor(stroke.getColor());
+                            }
+
+                            newStrokes.add(newStroke);
+                        }
+                    }
+                }
+                strokesList.removeAll(removedStrokes);
+                strokesList.addAll(newStrokes);
+                drawStrokes(strokesList);
+            }
+        } else {
+            drawStroke(event);
+        }
+        renderView();
+        return true;
+    }
+
 
     /*private void renderView() {
         m_Canvas.setTarget(m_ViewLayer);
@@ -446,6 +594,30 @@ public class MainActivity extends AppCompatActivity {
         m_Paint.setStrokeBrush(m_SolidBrush);
         m_Paint.setColor(Color.BLUE);// Particle brush.
         m_Paint.setWidth(Float.NaN);//draw it with width
+    }
+
+    private void createSelectPaint(){
+
+        m_selectionPaint = new StrokePaint();
+        m_selectionPaint.setStrokeBrush(m_SolidBrush);		// Solid color brush.
+        m_selectionPaint.setColor(Color.WHITE);			// Red color.
+        m_selectionPaint.setWidth(2.0f);
+    }
+
+
+    @Override
+    public void RenderOnAnime() {
+        Log.d("loopStroke", "drawing strokes");
+        drawStrokes(strokesList);
+        Log.d("loopStroke", "rendering");
+        renderView();
+        //Log.d("loopStroke", "rendered");
+    }
+
+    @Override
+    public void AnimeEnded() {
+        counterSelected=0;
+        start = end = null;
     }
 
     private class BoundaryView extends View {
