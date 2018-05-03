@@ -1,12 +1,17 @@
 package com.example.erezd.animative.activities;
 
+import android.Manifest;
 import android.content.Context;
+import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.net.Uri;
 import android.os.Bundle;
+import android.support.v4.app.ActivityCompat;
+import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
 import android.view.MotionEvent;
@@ -16,6 +21,7 @@ import android.view.View;
 import android.widget.Toast;
 
 import com.example.erezd.animative.R;
+import com.example.erezd.animative.animation.Animation;
 import com.example.erezd.animative.utilities.serialization.Stroke;
 import com.example.erezd.animative.utilities.serialization.StrokeSerializer;
 import com.wacom.ink.boundary.BoundaryBuilder;
@@ -34,7 +40,6 @@ import com.wacom.ink.rasterization.StrokeRenderer;
 import com.wacom.ink.rendering.EGLRenderingContext;
 import com.wacom.ink.smooth.MultiChannelSmoothener;
 
-import java.io.IOException;
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.LinkedList;
@@ -52,6 +57,7 @@ public class MainActivity extends AppCompatActivity {
     private StrokeRenderer m_StrokeRenderer;
     private boolean m_IsDrawClicked = false;
     private boolean m_isEraserClicked = false;
+    private boolean m_isPathClicked = false;
     private MultiChannelSmoothener m_Smoothener;
     private ArrayList<FloatBuffer> paths=null;
     private BoundaryBuilder boundaryBuilder;
@@ -64,7 +70,11 @@ public class MainActivity extends AppCompatActivity {
     private StrokeSerializer serializer;
     //checks for intersections of strokes. used by the eraser.
     private Intersector<Stroke> intersector;
-
+    private int m_SceneWidth, m_SceneHeight;
+    private static final int WRITE_TO_EXTERNAL_STOREG_PERMISSION = 100;
+    private static final int INTERNET_PERMISSION = 101;
+    private static final int ACCESS_NETWORK_STATE_PERMISSION = 102;
+    private Animation m_AnimationBuilder = new Animation();
 
     void drawthem(){
         FloatBuffer path = paths.get(0);
@@ -138,6 +148,8 @@ public class MainActivity extends AppCompatActivity {
                 m_Smoothener.enableChannel(2);
 
                 m_StrokeRenderer = new StrokeRenderer(m_Canvas, m_Paint, m_PathStride, width, height);
+                m_SceneWidth = width;
+                m_SceneHeight = height;
 
                /* if(paths != null && paths.size()>0){
                     drawthem();
@@ -175,7 +187,7 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public boolean onTouch(View v, MotionEvent event) {
                 Log.d("demo", m_IsDrawClicked +" " + m_isEraserClicked);
-                if(m_IsDrawClicked) {
+                if(m_IsDrawClicked || m_isPathClicked) {
 
                     boolean bFinished = buildPath(event);
                     drawStroke(event);
@@ -242,17 +254,63 @@ public class MainActivity extends AppCompatActivity {
 
     }
 
+    public void buttonPreiview_OnClick(View view){
+        // Here, thisActivity is the current activity
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.INTERNET)
+                != PackageManager.PERMISSION_GRANTED) {
+
+            // No explanation needed; request the permission
+            ActivityCompat.requestPermissions(this,
+                    new String[]{Manifest.permission.INTERNET},
+                    INTERNET_PERMISSION);
+
+            // MY_PERMISSIONS_REQUEST_READ_CONTACTS is an
+            // app-defined int constant. The callback method gets the
+            // result of the request.
+
+        } else {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_NETWORK_STATE)
+                            != PackageManager.PERMISSION_GRANTED ) {
+
+                ActivityCompat.requestPermissions(this,
+                        new String[]{Manifest.permission.ACCESS_NETWORK_STATE},
+                        ACCESS_NETWORK_STATE_PERMISSION);
+
+                // MY_PERMISSIONS_REQUEST_READ_CONTACTS is an
+                // app-defined int constant. The callback method gets the
+                // result of the request.
+
+            }
+            else {
+                // Permission has already been granted
+                m_AnimationBuilder.foo();
+                startActivity(new Intent(this, AnimationActivity.class));
+            }
+        }
+
+    }
 
     public void buttonDraw_OnClick(View view) {
         //if any of the buttons is pressed
         boolean aButtonIsActive = false;
 
         switch (view.getId()){
-            case R.id.buttonDraw:
+            case R.id.buttonDraw: {
+                for(Stroke stroke : strokesList){
+                    m_AnimationBuilder.GetObject().add(stroke);
+                }
+                strokesList.clear();
                 aButtonIsActive = m_IsDrawClicked = !m_IsDrawClicked;
                 break;
-            case R.id.buttonPath:
+            }
+            case R.id.buttonPath: {
+                for(Stroke stroke : strokesList){
+                    m_AnimationBuilder.GetPath().add(stroke);
+                }
+                strokesList.clear();
+                aButtonIsActive = m_isPathClicked = !m_isPathClicked;
                 break;
+            }
             case R.id.buttonEraser:
                 aButtonIsActive = m_isEraserClicked = !m_isEraserClicked;
                 break;
@@ -261,7 +319,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         if(aButtonIsActive){
-            view.setBackgroundColor(Color.RED);
+            view.setBackgroundColor(Color.DKGRAY);
             disableOthers(view.getId());
         }
         else{
@@ -275,13 +333,13 @@ public class MainActivity extends AppCompatActivity {
         switch(buttonClickedId){
             case R.id.buttonDraw:
                 findViewById(R.id.buttonPath).setBackgroundResource(android.R.drawable.btn_default);
-                findViewById(R.id.buttonEraser).setBackgroundResource(android.R.drawable.btn_default);
-                m_isEraserClicked = false;
+                //findViewById(R.id.buttonEraser).setBackgroundResource(android.R.drawable.btn_default);
+                m_isPathClicked = false;
                 break;
             case R.id.buttonPath:
                 findViewById(R.id.buttonDraw).setBackgroundResource(android.R.drawable.btn_default);
-                findViewById(R.id.buttonEraser).setBackgroundResource(android.R.drawable.btn_default);
-                m_IsDrawClicked = m_isEraserClicked = false;
+                //findViewById(R.id.buttonEraser).setBackgroundResource(android.R.drawable.btn_default);
+                m_IsDrawClicked  = false;
                 break;
             case R.id.buttonEraser:
                 findViewById(R.id.buttonDraw).setBackgroundResource(android.R.drawable.btn_default);
@@ -294,7 +352,59 @@ public class MainActivity extends AppCompatActivity {
 
     public void buttonCopy_OnClick(View view)
     {
-        FloatBuffer buffer = m_PathBuilder.getPreliminaryPathBuffer();
+        // Here, thisActivity is the current activity
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                != PackageManager.PERMISSION_GRANTED) {
+
+                // No explanation needed; request the permission
+                ActivityCompat.requestPermissions(this,
+                        new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE},
+                        WRITE_TO_EXTERNAL_STOREG_PERMISSION);
+
+        } else {
+            // Permission has already been granted
+            serializer.saveWillFile(strokesList, this, m_SceneWidth, m_SceneHeight);
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode,
+                                           String permissions[], int[] grantResults) {
+        switch (requestCode) {
+            case WRITE_TO_EXTERNAL_STOREG_PERMISSION: {
+                // If request is cancelled, the result arrays are empty.
+                if (grantResults.length > 0
+                        && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    Toast.makeText(MainActivity.this, "Permission granted", Toast.LENGTH_LONG).show();
+                } else {
+                    // permission denied, boo! Disable the
+                    // functionality that depends on this permission.
+                }
+                break;
+            }
+            case INTERNET_PERMISSION: {
+                // If request is cancelled, the result arrays are empty.
+                if (grantResults.length > 0
+                        && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    Toast.makeText(MainActivity.this, "Permission granted", Toast.LENGTH_LONG).show();
+                } else {
+                    // permission denied, boo! Disable the
+                    // functionality that depends on this permission.
+                }
+                break;
+            }
+            case ACCESS_NETWORK_STATE_PERMISSION: {
+                // If request is cancelled, the result arrays are empty.
+                if (grantResults.length > 0
+                        && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    Toast.makeText(MainActivity.this, "Permission granted", Toast.LENGTH_LONG).show();
+                } else {
+                    // permission denied, boo! Disable the
+                    // functionality that depends on this permission.
+                }
+                break;
+            }
+        }
     }
 
     private boolean buildPath(MotionEvent event) {

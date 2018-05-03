@@ -37,9 +37,10 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
+                android:onClick="buttonDraw_OnClick"
                 android:text="Path"
-                android:textSize="25sp"
-                android:textColor="#000000" />
+                android:textColor="#000000"
+                android:textSize="25sp" />
 
         </LinearLayout>
 
@@ -75,11 +76,12 @@
             <Button
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Preview"
-                android:textSize="25sp"
-                android:textColor="#000000"
+                android:layout_alignParentBottom="true"
                 android:layout_alignParentEnd="true"
-                android:layout_alignParentBottom="true"/>
+                android:onClick="buttonPreiview_OnClick"
+                android:text="Preview"
+                android:textColor="#000000"
+                android:textSize="25sp" />
 
         </RelativeLayout>
 

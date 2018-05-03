@@ -1,6 +1,7 @@
 package com.example.erezd.animative.utilities.serialization;
 
 import android.content.Context;
+import android.graphics.Matrix;
 import android.net.Uri;
 import android.os.Environment;
 import android.support.annotation.NonNull;
@@ -26,6 +27,7 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.LinkedList;
@@ -52,7 +54,7 @@ public class StrokeSerializer {
      * @param sceneWidth
      * @param sceneHeight
      */
-    private void saveWillFile(LinkedList<Stroke> strokesList, Context context, int sceneWidth, int sceneHeight){
+    public void saveWillFile(LinkedList<Stroke> strokesList, Context context, int sceneWidth, int sceneHeight){
         File willFile = new File(Environment.getExternalStorageDirectory() + "/sample.will");
 
         LinkedList<InkPathData> inkPathsDataList = new LinkedList<InkPathData>();
@@ -97,6 +99,7 @@ public class StrokeSerializer {
                     .addChild(//creates a set of strokes as a child in the section
                             willDoc.createPaths(inkPathsDataList, 2));
             /* MORE OPTIONS FOR THE Section LIKE SETTING AN ID, IS TO BE ADDED HERE.*/
+
 
             //add this section to the set of sections in the WillDocument
             willDoc.addSection(section);
