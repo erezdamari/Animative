@@ -1,14 +1,19 @@
 package com.example.erezd.animative.activities;
 
+import android.Manifest;
 import android.annotation.SuppressLint;
 import android.content.Context;
+import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.net.Uri;
-import android.os.AsyncTask;
 import android.os.Bundle;
+import android.support.annotation.NonNull;
+import android.support.v4.app.ActivityCompat;
+import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
 import android.view.MotionEvent;
@@ -21,10 +26,11 @@ import android.widget.Toast;
 
 import com.example.erezd.animative.R;
 import com.example.erezd.animative.ui.SeekBarListener;
-import com.example.erezd.animative.utilities.AnimeTask;
-import com.example.erezd.animative.utilities.PointCalc;
+import com.example.erezd.animative.utilities.animation.AnimeOnePointTask;
 import com.example.erezd.animative.utilities.serialization.Stroke;
 import com.example.erezd.animative.utilities.serialization.StrokeSerializer;
+import com.example.erezd.animative.utilities.tasks.AnimationManager;
+import com.example.erezd.animative.utilities.tasks.SavingTask;
 import com.wacom.ink.boundary.BoundaryBuilder;
 import com.wacom.ink.manipulation.Intersector;
 import com.wacom.ink.path.PathBuilder.PropertyFunction;
@@ -46,7 +52,7 @@ import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.LinkedList;
 
-public class MainActivity extends AppCompatActivity implements AnimeTask.AnimeResultListener {
+public class MainActivity extends AppCompatActivity implements AnimeOnePointTask.AnimeResultListener, AnimationManager.SaveListenerActivity{
 
     public int counterSelected =0;
     private Stroke start;
@@ -63,7 +69,7 @@ public class MainActivity extends AppCompatActivity implements AnimeTask.AnimeRe
     public static boolean IsVisible(){
         return !isStopped;
     }
-
+    Bitmap currentBitmap;
     private SeekBar m_SeekBar;
 
     private SurfaceView SV;
@@ -142,11 +148,22 @@ public class MainActivity extends AppCompatActivity implements AnimeTask.AnimeRe
 
         createPathBuilder();
 
+
         findViewById(R.id.buttonPreview).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                if(counterSelected == 2)
-                    new AnimeTask(MainActivity.this, m_SeekBar.getProgress()).execute(start, end);
+                if (ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.WRITE_CALENDAR)
+                        != PackageManager.PERMISSION_GRANTED) {
+                    ActivityCompat.requestPermissions(MainActivity.this,
+                            new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE},
+                            100);
+                }
+                else{
+                    if(counterSelected == 2) {
+                        findViewById(R.id.progressSpinner).setVisibility(View.VISIBLE);
+                        new AnimeOnePointTask(MainActivity.this, m_SeekBar.getProgress()).execute(start, end);
+                    }
+                }
             }
         });
 
@@ -154,7 +171,6 @@ public class MainActivity extends AppCompatActivity implements AnimeTask.AnimeRe
             paths = new ArrayList<>();*/
 
         SV = findViewById(R.id.surfaceView);
-
         SV.getHolder().addCallback(new SurfaceHolder.Callback(){
             @Override
             public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
@@ -163,7 +179,6 @@ public class MainActivity extends AppCompatActivity implements AnimeTask.AnimeRe
                 }
 
                 m_Canvas = InkCanvas.create(holder, new EGLRenderingContext.EGLConfiguration());
-
 
                 m_ViewLayer = m_Canvas.createViewLayer(width, height);//everything in this layer is drawn to screen (it is the target layer)
                 m_StrokesLayer = m_Canvas.createLayer(width, height);//this layer draws all strokes
@@ -176,6 +191,7 @@ public class MainActivity extends AppCompatActivity implements AnimeTask.AnimeRe
                 createStrokePaint();
                 createSelectPaint();
 
+            //    currentBitmap= Bitmap.createBitmap(m_ViewLayer.getWidth(), m_ViewLayer.getHeight(), Bitmap.Config.ARGB_8888);
 
                 m_Smoothener = new MultiChannelSmoothener(m_PathStride);
                 m_Smoothener.enableChannel(2);
@@ -304,7 +320,6 @@ public class MainActivity extends AppCompatActivity implements AnimeTask.AnimeRe
 
 
 
-
     /*   if(boundaryBuilder == null) {
             boundaryBuilder = new BoundaryBuilder();
             if (boundaryPaths == null) {
@@ -318,8 +333,37 @@ public class MainActivity extends AppCompatActivity implements AnimeTask.AnimeRe
                         RelativeLayout.LayoutParams.MATCH_PARENT));
 */
 
+
+
+        AnimationManager.getManager().registerSaveListenerActivity(this);
+
     }
 
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        switch (requestCode) {
+            case 100: {
+                // If request is cancelled, the result arrays are empty.
+                if (grantResults.length > 0
+                        && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    // permission was granted
+                    if(counterSelected == 2){
+                        findViewById(R.id.progressSpinner).setVisibility(View.VISIBLE);
+                        new AnimeOnePointTask(MainActivity.this, m_SeekBar.getProgress()).execute(start, end);
+                    }
+
+
+                } else {
+                    // permission denied
+                }
+                return;
+            }
+
+            // other 'case' lines to check for other
+            // permissions this app might request.
+        }
+
+    }
 
     public void buttonDraw_OnClick(View view) {
         //if any of the buttons is pressed
@@ -464,6 +508,7 @@ public class MainActivity extends AppCompatActivity implements AnimeTask.AnimeRe
             m_Canvas.clearColor(Color.WHITE);
             m_Canvas.drawLayer(m_StrokesLayer, BlendMode.BLENDMODE_NORMAL);
             m_StrokeRenderer.blendStrokeUpdatedArea(m_CurrentFrameLayer, BlendMode.BLENDMODE_NORMAL);
+
         } else {
             m_StrokeRenderer.blendStroke(m_StrokesLayer, BlendMode.BLENDMODE_NORMAL);
             m_Canvas.setTarget(m_CurrentFrameLayer);
@@ -475,10 +520,11 @@ public class MainActivity extends AppCompatActivity implements AnimeTask.AnimeRe
     //draw the strokes from the list from 'surfaceChanged'
     public synchronized void drawStrokes(LinkedList<Stroke> strokesList) {
         m_Canvas.setTarget(m_StrokesLayer);
-        m_Canvas.clearColor();
+        m_Canvas.clearColor(Color.WHITE);
 
         for (Stroke stroke: strokesList){
             m_Paint.setColor(stroke.getColor());
+
             m_StrokeRenderer.setStrokePaint(m_Paint);
             m_StrokeRenderer.drawPoints(stroke.getPoints(), 0, stroke.getSize(),
                     stroke.getStartValue(), stroke.getEndValue(), true);
@@ -491,6 +537,36 @@ public class MainActivity extends AppCompatActivity implements AnimeTask.AnimeRe
     }
 
 
+    //to be called from the saving animation task
+    @Override
+    public synchronized void drawStrokesOfSaveFrame(Stroke target, Stroke copy){
+        m_Canvas.setTarget(m_StrokesLayer);
+        m_Canvas.clearColor(Color.WHITE);
+
+        for (Stroke stroke: strokesList){
+            m_Paint.setColor(stroke.getColor());
+
+            m_StrokeRenderer.setStrokePaint(m_Paint);
+            if(stroke != target) {
+                m_StrokeRenderer.drawPoints(stroke.getPoints(), 0, stroke.getSize(),
+                        stroke.getStartValue(), stroke.getEndValue(), true);
+            }
+            else
+                m_StrokeRenderer.drawPoints(copy.getPoints(), 0, stroke.getSize(),
+                        stroke.getStartValue(), stroke.getEndValue(), true);
+
+            m_StrokeRenderer.blendStroke(m_StrokesLayer, BlendMode.BLENDMODE_NORMAL);
+        }
+
+        m_Canvas.setTarget(m_CurrentFrameLayer);
+        m_Canvas.clearColor(Color.WHITE);
+        m_Canvas.drawLayer(m_StrokesLayer, BlendMode.BLENDMODE_NORMAL);
+        m_Canvas.setTarget(m_ViewLayer);
+        m_Canvas.drawLayer(m_CurrentFrameLayer, BlendMode.BLENDMODE_OVERWRITE);
+        //renderView();
+    }
+
+
     public synchronized void renderView() {
         m_Canvas.setTarget(m_ViewLayer);
         m_Canvas.drawLayer(m_CurrentFrameLayer, BlendMode.BLENDMODE_OVERWRITE);
@@ -500,6 +576,7 @@ public class MainActivity extends AppCompatActivity implements AnimeTask.AnimeRe
     private void releaseResources(){
         m_StrokeRenderer.dispose();
         m_Canvas.dispose();
+
     }
 
 
@@ -618,6 +695,134 @@ public class MainActivity extends AppCompatActivity implements AnimeTask.AnimeRe
     public void AnimeEnded() {
         counterSelected=0;
         start = end = null;
+        //new GifCreateTask(images, getExternalFilesDir(null).getAbsolutePath()).execute();
+
+    }
+  //  ArrayList<Bitmap>images = new ArrayList<>();
+
+
+    @Override
+    public void finishedSavingAnimation() {
+        findViewById(R.id.progressSpinner).setVisibility(View.INVISIBLE);
+        renderViewWithStrokesAndClear();
+    }
+
+    private void renderViewWithStrokesAndClear(){
+        m_Canvas.setTarget(m_StrokesLayer);
+        m_Canvas.clearLayer(m_StrokesLayer);
+
+        for (Stroke stroke: strokesList){
+            m_Paint.setColor(stroke.getColor());
+
+            m_StrokeRenderer.setStrokePaint(m_Paint);
+                m_StrokeRenderer.drawPoints(stroke.getPoints(), 0, stroke.getSize(),
+                        stroke.getStartValue(), stroke.getEndValue(), true);
+
+            m_StrokeRenderer.blendStroke(m_StrokesLayer, BlendMode.BLENDMODE_NORMAL);
+        }
+
+        m_Canvas.setTarget(m_CurrentFrameLayer);
+        m_Canvas.clearColor(Color.WHITE);
+        m_Canvas.drawLayer(m_StrokesLayer, BlendMode.BLENDMODE_NORMAL);
+
+        renderView();
+    }
+
+    @Override
+    public void saveBitmap(Stroke copy, Stroke target, boolean isLastFrame) {
+
+        if(isLastFrame) {
+            SavingTask s = new SavingTask(getExternalCacheDir().getAbsolutePath(), m_Canvas, m_ViewLayer, m_StrokeRenderer, copy, target);
+            AnimationManager.getManager().executeSaveTask(s, true);
+        }else {
+            SavingTask s = new SavingTask(getExternalCacheDir().getAbsolutePath(), m_Canvas, m_ViewLayer, m_StrokeRenderer, copy, target);
+            AnimationManager.getManager().executeSaveTask(s, false);
+        }
+
+       // Matrix m = new Matrix();
+       // m.postRotate(180);
+       // m.postScale(-1, 1, b.getWidth()/2, b.getHeight()/2);
+      //  return Bitmap.createBitmap(b, 0,0 ,b.getWidth(), b.getHeight(), m, true);
+/*
+       AsyncTask<Void,Void,Bitmap> task = new AsyncTask<Void,Void,Bitmap>(){
+            Bitmap imageScaled;//=currentBitmap.copy(Bitmap.Config.ARGB_8888, false);
+
+            @Override
+            protected void onPreExecute() {
+               //imageScaled=getResizedBitmap(b, m_ViewLayer.getWidth()/3);
+                WRect rect = m_StrokeRenderer.getStrokeUpdatedArea();
+                Log.d("xyrect", rect.getX() + " "+rect.getY());
+                imageScaled = Bitmap.createBitmap(m_ViewLayer.getWidth(), m_ViewLayer.getHeight(), Bitmap.Config.ARGB_8888);
+                m_Canvas.readPixels(m_ViewLayer, imageScaled, rect.getX(),rect.getY(), rect.getX(),rect.getY(), rect.getWidth(), rect.getHeight());
+
+            }
+
+            @Override
+            protected Bitmap doInBackground(Void... voids) {
+                String file_path = getExternalCacheDir().getAbsolutePath();//  +
+                //"/PhysicsSketchpad";
+                File dir = new File(file_path);
+                if (!dir.exists())
+                    dir.mkdirs();
+                try {
+
+                    File file = new File(dir, "sketchpad" + count + ".png");
+                    FileOutputStream outStream = new FileOutputStream(file);
+                    // outStream = new FileOutputStream(file);
+                    imageScaled.compress(Bitmap.CompressFormat.PNG, 100, outStream);
+                    outStream.flush();
+                    outStream.close();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+                Log.e("file", "" + file_path);
+                imageScaled.recycle();
+                imageScaled = null;
+              //  images.add(imageScaled);
+                return  imageScaled;
+            }
+
+            @Override
+            protected void onPostExecute(Bitmap image) {
+
+
+            }
+        };
+       executor.execute(task);
+
+        count++;
+*/
+        //b.recycle();
+        //return imageScaled;
+    }
+
+
+    @Override
+    protected void onDestroy() {
+        AnimationManager.getManager().unregisterOnSaveListenerActivity();
+        AnimationManager.getManager().stopBgHandler();
+        super.onDestroy();
+    }
+
+    /**
+     * reduces the size of the image
+     * @param image
+     * @param maxSize
+     * @return
+     */
+    public Bitmap getResizedBitmap(Bitmap image, int maxSize) {
+        int width = image.getWidth();
+        int height = image.getHeight();
+
+        float bitmapRatio = (float)width / (float) height;
+        if (bitmapRatio > 1) {
+            width = maxSize;
+            height = (int) (width / bitmapRatio);
+        } else {
+            height = maxSize;
+            width = (int) (height * bitmapRatio);
+        }
+        return Bitmap.createScaledBitmap(image, width, height, true);
     }
 
     private class BoundaryView extends View {

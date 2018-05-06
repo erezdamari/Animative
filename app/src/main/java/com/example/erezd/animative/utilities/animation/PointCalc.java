@@ -1,4 +1,4 @@
-package com.example.erezd.animative.utilities;
+package com.example.erezd.animative.utilities.animation;
 
 /**
  * Created by avivam on 30/04/2018.

@@ -1,6 +1,7 @@
 package com.example.erezd.animative.utilities.serialization;
 
 import android.content.Context;
+import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.Environment;
 import android.support.annotation.NonNull;
@@ -121,13 +122,18 @@ public class StrokeSerializer {
             WILLReader reader = new WILLReader(new WillDocumentFactory(context, context.getCacheDir()), willFile);
             WillDocument doc = reader.read();
             for (Section section: doc.getSections()){
+                Bitmap bitmap = section.getBackground();
+
                 //a set of paths in the section
                 ArrayList<BaseNode> pathsElements = section.findChildren(BaseNode.TYPE_PATHS);
                 //loop through each set and get the strokes
                 for (BaseNode node: pathsElements){
                     Paths pathsElement = (Paths)node;
+
+
                     //loop of strokes in set
                     for (InkPathData inkPath: pathsElement.getInkPaths()){
+
                         Stroke stroke = new Stroke();
                         stroke.copyPoints(inkPath.getPoints(), 0, inkPath.getSize());
                         stroke.setStride(inkPath.getStride());
@@ -174,6 +180,7 @@ public class StrokeSerializer {
                     stroke.getStride(), stroke.getWidth(), stroke.getColor(),
                     stroke.getStartValue(), stroke.getEndValue(), stroke.getBlendMode());
         }
+
 
         ByteBuffer encData = encoder.getEncodedData(); //get binary presentation of the encoded strokes
         encSize = encoder.getEncodedDataSizeInBytes(); //size of the binary data

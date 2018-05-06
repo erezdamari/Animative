@@ -40,6 +40,22 @@ public class Stroke implements Intersectable{
 		endT = 1.0f;
 	}
 
+	public Stroke(Stroke source){
+		color = source.color;
+		stride = source.stride;
+		size = source.size;
+		width = source.width;
+		startT = source.startT;
+		endT = source.endT;
+		blendMode = source.blendMode;
+		paintIndex = source.paintIndex;
+		seed = source.seed;
+		hasRandomSeed = source.hasRandomSeed;
+		bounds = new RectF(source.bounds);
+		segmentsBounds = source.segmentsBounds;
+		copyPoints(source.points, 0, source.size);
+	}
+
 	public int getStride() {
 		return stride;
 	}
