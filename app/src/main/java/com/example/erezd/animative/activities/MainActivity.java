@@ -40,6 +40,7 @@ import com.wacom.ink.rasterization.StrokeRenderer;
 import com.wacom.ink.rendering.EGLRenderingContext;
 import com.wacom.ink.smooth.MultiChannelSmoothener;
 
+import java.io.IOException;
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.LinkedList;
@@ -74,6 +75,7 @@ public class MainActivity extends AppCompatActivity {
     private static final int WRITE_TO_EXTERNAL_STOREG_PERMISSION = 100;
     private static final int INTERNET_PERMISSION = 101;
     private static final int ACCESS_NETWORK_STATE_PERMISSION = 102;
+    private static final int READ_FROM_EXTERNAL_STOREG_PERMISSION = 103;
     private Animation m_AnimationBuilder = new Animation();
 
     void drawthem(){
@@ -159,7 +161,7 @@ public class MainActivity extends AppCompatActivity {
                 intersector = new Intersector<Stroke>();
 
                //USE A THREAD HERE
-                loadStrokes(Uri.fromFile(getFileStreamPath(getString(R.string.FILE_BIN_SAVE_NAME)+ ".bin")));
+                //loadStrokes(Uri.fromFile(getFileStreamPath(getString(R.string.FILE_BIN_SAVE_NAME)+ ".bin")));
 
 
                 drawStrokes(strokesList);
@@ -255,7 +257,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void buttonPreiview_OnClick(View view){
-        // Here, thisActivity is the current activity
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.INTERNET)
                 != PackageManager.PERMISSION_GRANTED) {
 
@@ -263,11 +264,6 @@ public class MainActivity extends AppCompatActivity {
             ActivityCompat.requestPermissions(this,
                     new String[]{Manifest.permission.INTERNET},
                     INTERNET_PERMISSION);
-
-            // MY_PERMISSIONS_REQUEST_READ_CONTACTS is an
-            // app-defined int constant. The callback method gets the
-            // result of the request.
-
         } else {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_NETWORK_STATE)
                             != PackageManager.PERMISSION_GRANTED ) {
@@ -275,16 +271,19 @@ public class MainActivity extends AppCompatActivity {
                 ActivityCompat.requestPermissions(this,
                         new String[]{Manifest.permission.ACCESS_NETWORK_STATE},
                         ACCESS_NETWORK_STATE_PERMISSION);
-
-                // MY_PERMISSIONS_REQUEST_READ_CONTACTS is an
-                // app-defined int constant. The callback method gets the
-                // result of the request.
-
             }
             else {
-                // Permission has already been granted
-                m_AnimationBuilder.foo();
-                startActivity(new Intent(this, AnimationActivity.class));
+                if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE)
+                        != PackageManager.PERMISSION_GRANTED ) {
+
+                    ActivityCompat.requestPermissions(this,
+                            new String[]{Manifest.permission.READ_EXTERNAL_STORAGE},
+                            READ_FROM_EXTERNAL_STOREG_PERMISSION);
+                }
+                else {
+                    AnimationActivity.SetPoints(m_AnimationBuilder.getPathPoints());
+                    startActivity(new Intent(this, AnimationActivity.class));
+                }
             }
         }
 
@@ -293,7 +292,7 @@ public class MainActivity extends AppCompatActivity {
     public void buttonDraw_OnClick(View view) {
         //if any of the buttons is pressed
         boolean aButtonIsActive = false;
-
+        boolean flag = false;
         switch (view.getId()){
             case R.id.buttonDraw: {
                 for(Stroke stroke : strokesList){
@@ -306,8 +305,17 @@ public class MainActivity extends AppCompatActivity {
             case R.id.buttonPath: {
                 for(Stroke stroke : strokesList){
                     m_AnimationBuilder.GetPath().add(stroke);
+                    flag = true;
                 }
                 strokesList.clear();
+                if(flag) {
+                    m_AnimationBuilder.CreatePath();
+                    try {
+                        m_AnimationBuilder.WritePointsToFile();
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }
                 aButtonIsActive = m_isPathClicked = !m_isPathClicked;
                 break;
             }

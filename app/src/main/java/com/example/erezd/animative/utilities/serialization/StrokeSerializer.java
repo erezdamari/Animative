@@ -23,6 +23,8 @@ import com.wacom.ink.willformat.WILLWriter;
 import com.wacom.ink.willformat.WillDocument;
 import com.wacom.ink.willformat.WillDocumentFactory;
 
+import org.json.JSONArray;
+
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.nio.ByteBuffer;
@@ -151,6 +153,8 @@ public class StrokeSerializer {
         } catch (FileNotFoundException e) {
             e.printStackTrace();
         }
+        JSONArray array = new JSONArray();
+
     }
 
 
