@@ -3,6 +3,7 @@ package com.example.erezd.animative.activities;
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
@@ -10,8 +11,11 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.net.Uri;
+import android.os.AsyncTask;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.support.annotation.NonNull;
+import android.support.design.widget.Snackbar;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
@@ -23,10 +27,13 @@ import android.view.View;
 import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.widget.ToggleButton;
 
 import com.example.erezd.animative.R;
 import com.example.erezd.animative.ui.SeekBarListener;
+import com.example.erezd.animative.utilities.animation.AnimationPlay;
 import com.example.erezd.animative.utilities.animation.AnimeOnePointTask;
+import com.example.erezd.animative.utilities.animation.AnimeRecorder;
 import com.example.erezd.animative.utilities.serialization.Stroke;
 import com.example.erezd.animative.utilities.serialization.StrokeSerializer;
 import com.example.erezd.animative.utilities.tasks.AnimationManager;
@@ -54,22 +61,15 @@ import java.util.LinkedList;
 
 public class MainActivity extends AppCompatActivity implements AnimeOnePointTask.AnimeResultListener, AnimationManager.SaveListenerActivity{
 
-    public int counterSelected =0;
+
     private Stroke start;
     private Stroke end;
     private static boolean isStopped = false;
 
-    @Override
-    protected void onStop() {
-        isStopped = true;
-        counterSelected=0;
-        super.onStop();
-    }
+    private AsyncTask animation;
+    private AnimeRecorder recorder;
 
-    public static boolean IsVisible(){
-        return !isStopped;
-    }
-    Bitmap currentBitmap;
+    private Bitmap currentBitmap;
     private SeekBar m_SeekBar;
 
     private SurfaceView SV;
@@ -93,7 +93,9 @@ public class MainActivity extends AppCompatActivity implements AnimeOnePointTask
     private BoundaryView boundaryView;
 
     //a list of strokes to save
+    int countSelectedObj =0;
     private LinkedList<Stroke> strokesList = new LinkedList<Stroke>();
+    private LinkedList<Stroke> selectedsList = new LinkedList<Stroke>();
     //the encode/decode instance
     private StrokeSerializer serializer;
     //checks for intersections of strokes. used by the eraser.
@@ -134,9 +136,12 @@ public class MainActivity extends AppCompatActivity implements AnimeOnePointTask
         m_SeekBar = findViewById(R.id.seekBar);
         m_SeekBar.setOnSeekBarChangeListener(new SeekBarListener(m_SeekBar.getProgress(), 1, (TextView)findViewById(R.id.progressVal)));
 
+        recorder = new AnimeRecorder(this);
 
         if(serializer == null)
             serializer = new StrokeSerializer();
+
+
 
        /* //saves previous paths
         if(savedInstanceState!=null && !savedInstanceState.isEmpty()) {
@@ -148,24 +153,9 @@ public class MainActivity extends AppCompatActivity implements AnimeOnePointTask
 
         createPathBuilder();
 
+        setButtonsListeners();
 
-        findViewById(R.id.buttonPreview).setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                if (ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.WRITE_CALENDAR)
-                        != PackageManager.PERMISSION_GRANTED) {
-                    ActivityCompat.requestPermissions(MainActivity.this,
-                            new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE},
-                            100);
-                }
-                else{
-                    if(counterSelected == 2) {
-                        findViewById(R.id.progressSpinner).setVisibility(View.VISIBLE);
-                        new AnimeOnePointTask(MainActivity.this, m_SeekBar.getProgress()).execute(start, end);
-                    }
-                }
-            }
-        });
+
 
         /*if(paths == null)
             paths = new ArrayList<>();*/
@@ -209,7 +199,7 @@ public class MainActivity extends AppCompatActivity implements AnimeOnePointTask
                 loadStrokes(Uri.fromFile(getFileStreamPath(getString(R.string.FILE_BIN_SAVE_NAME)+ ".bin")));
 
 
-                drawStrokes(strokesList);
+                drawStrokes(strokesList, true);
                 renderView();
             }
 
@@ -251,6 +241,32 @@ public class MainActivity extends AppCompatActivity implements AnimeOnePointTask
                         stroke.setInterval(0.0f, 1.0f);
                         stroke.setBlendMode(BlendMode.BLENDMODE_NORMAL);
                         stroke.calculateBounds();
+                        stroke.setType(Stroke.StrokeType.OBJ);
+                        strokesList.add(stroke);
+
+                        Toast.makeText(MainActivity.this, "We have " + strokesList.size()
+                                + " strokes in the list.", Toast.LENGTH_SHORT).show();
+                    }
+
+                    return true;
+                }
+                else if(m_isPathClicked){
+
+                    boolean bFinished = buildPath(event);
+                    drawStroke(event);
+                    renderView();
+
+                    //saves the new add stroke to the list
+                    if (bFinished){
+                        Stroke stroke = new Stroke();
+                        stroke.copyPoints(m_PathBuilder.getPathBuffer(), 0, m_PathBuilder.getPathSize());
+                        stroke.setStride(m_PathBuilder.getStride());
+                        stroke.setWidth(Float.NaN);//NaN means the width is a part of the stride(size of a set of points)
+                        stroke.setColor(m_Paint.getColor());
+                        stroke.setInterval(0.0f, 1.0f);
+                        stroke.setBlendMode(BlendMode.BLENDMODE_NORMAL);
+                        stroke.calculateBounds();
+                        stroke.setType(Stroke.StrokeType.PATH);
                         strokesList.add(stroke);
 
                         Toast.makeText(MainActivity.this, "We have " + strokesList.size()
@@ -260,6 +276,7 @@ public class MainActivity extends AppCompatActivity implements AnimeOnePointTask
                     return true;
                 }
                 else if(m_isEraserClicked){
+                    boolean strokeRm = false;
                     buildPath(event);
                     if (strokesList.size()>0) {
                         //set the target to compare with.
@@ -268,21 +285,24 @@ public class MainActivity extends AppCompatActivity implements AnimeOnePointTask
                                 m_PathBuilder.getAddedPointsSize(), m_PathStride);
                         LinkedList<Stroke> removedStrokes = new LinkedList<Stroke>();
                         //loop through each of the drawn strokes to check if it intersect with the user touch
-                        for (Stroke stroke: strokesList){
-                            if (intersector.isIntersectingTarget(stroke)){
-                                removedStrokes.add(stroke);
+                        for (Stroke object: strokesList){
+                            if (intersector.isIntersectingTarget(object)){
+                                removedStrokes.add(object);
+                                strokeRm = true;
                             }
                         }
-                        strokesList.removeAll(removedStrokes);
-                        drawStrokes(strokesList);
-                        renderView();
+                        if(strokeRm) {
+                            strokesList.removeAll(removedStrokes);
+                            drawStrokes(strokesList, true);
+                            renderView();
+                        }
                     }
                     return true;
                 }
                 else if(m_isSelectClicked) {
 
                     buildPath(event);
-                    if (event.getAction() == MotionEvent.ACTION_UP && counterSelected < 2){
+                    if (event.getAction() == MotionEvent.ACTION_UP ){
                         if (strokesList.size()>0) {
 
                             //I CHANGED THE INTERSECTOR CODE HERE, see the tutorial for selecting the whole stroke
@@ -291,10 +311,9 @@ public class MainActivity extends AppCompatActivity implements AnimeOnePointTask
 
                             for (Stroke stroke: strokesList){
                                 if (intersector.isIntersectingTarget(stroke)){
-                                    if (++counterSelected == 1)
-                                        start = stroke;
-                                    else
-                                        end = stroke;
+                                    if(stroke.getType() == Stroke.StrokeType.OBJ)
+                                        countSelectedObj++;
+                                    selectedsList.add(new Stroke(stroke));
 
                                     if (stroke.getColor()==Color.RED){
                                         stroke.setColor(Color.BLUE);
@@ -303,7 +322,7 @@ public class MainActivity extends AppCompatActivity implements AnimeOnePointTask
                                     }
                                 }
                             }
-                            drawStrokes(strokesList);
+                            drawStrokes(strokesList, true);
                             renderView();
                         }
                     }
@@ -339,24 +358,99 @@ public class MainActivity extends AppCompatActivity implements AnimeOnePointTask
 
     }
 
+    private void setButtonsListeners(){
+        findViewById(R.id.buttonPreview).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                if (ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.WRITE_CALENDAR)
+                        != PackageManager.PERMISSION_GRANTED) {
+                    ActivityCompat.requestPermissions(MainActivity.this,
+                            new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE},
+                            100);
+                }
+                else{
+                    if(selectedsList.size() > 0) {
+                        enableButtons(true);
+                        // findViewById(R.id.progressSpinner).setVisibility(View.VISIBLE);
+                        //new AnimeOnePointTask(MainActivity.this, m_SeekBar.getProgress()).execute(start, end);
+                        LinkedList<Stroke>[] strokes = new LinkedList[countSelectedObj];
+                        seperateObjAndPath(strokes);
+                        animation = new AnimationPlay(MainActivity.this, m_SeekBar.getProgress()).execute(
+                                strokes);
+                    }
+                }
+            }
+        });
+
+        findViewById(R.id.buttonSelect).setOnFocusChangeListener(new View.OnFocusChangeListener() {
+            @Override
+            public void onFocusChange(View view, boolean b) {
+                if(!b){
+                    countSelectedObj = 0;
+                    selectedsList.clear();
+                    Log.d("focus", "disabled");
+                }
+            }
+        });
+
+        findViewById(R.id.stop_anim).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                if(animation != null && animation.getStatus() == AsyncTask.Status.RUNNING){
+                    animation.cancel(false);
+                    AnimeEnded();
+                    enableButtons(true);
+                }
+            }
+        });
+    }
+
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         switch (requestCode) {
             case 100: {
                 // If request is cancelled, the result arrays are empty.
-                if (grantResults.length > 0
-                        && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                     // permission was granted
-                    if(counterSelected == 2){
-                        findViewById(R.id.progressSpinner).setVisibility(View.VISIBLE);
-                        new AnimeOnePointTask(MainActivity.this, m_SeekBar.getProgress()).execute(start, end);
+                    if(countSelectedObj > 0){
+                        enableButtons(false);
+                       // findViewById(R.id.progressSpinner).setVisibility(View.VISIBLE);
+                       // new AnimeOnePointTask(MainActivity.this, m_SeekBar.getProgress()).execute(start, end);
+                        LinkedList<Stroke>[] strokes = new LinkedList[countSelectedObj];
+                        seperateObjAndPath(strokes);
+                        animation = new AnimationPlay(MainActivity.this, m_SeekBar.getProgress()).execute(
+                                strokes);
                     }
 
 
                 } else {
                     // permission denied
                 }
-                return;
+                break;
+            }
+            case AnimeRecorder.REQUEST_PERMISSIONS: {
+                ToggleButton toggle = ((ToggleButton)findViewById(R.id.record));
+                if ((grantResults.length > 0) && grantResults[0]  == PackageManager.PERMISSION_GRANTED) {
+                    recorder.onToggleScreenShare(toggle);
+                } else {
+                    toggle.setChecked(false);
+                    Snackbar.make(findViewById(android.R.id.content), "permit recording",
+                            Snackbar.LENGTH_INDEFINITE).setAction("ENABLE",
+                            new View.OnClickListener() {
+                                @Override
+                                public void onClick(View v) {
+                                    Intent intent = new Intent();
+                                    intent.setAction(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                                    intent.addCategory(Intent.CATEGORY_DEFAULT);
+                                    intent.setData(Uri.parse("package:" + getPackageName()));
+                                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                                    intent.addFlags(Intent.FLAG_ACTIVITY_NO_HISTORY);
+                                    intent.addFlags(Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS);
+                                    startActivity(intent);
+                                }
+                            }).show();
+                }
+                break;
             }
 
             // other 'case' lines to check for other
@@ -388,7 +482,7 @@ public class MainActivity extends AppCompatActivity implements AnimeOnePointTask
 
         if(aButtonIsActive){
             view.setBackgroundColor(Color.RED);
-            disableOthers(view.getId());
+            diselectOthers(view.getId());
         }
         else{
             view.setBackgroundResource(android.R.drawable.btn_default);
@@ -397,7 +491,20 @@ public class MainActivity extends AppCompatActivity implements AnimeOnePointTask
     }
 
 
-    private void disableOthers(int buttonClickedId){
+    private void enableButtons(boolean enable){
+        float alpha = enable? 1f : 0.5f;
+
+        findViewById(R.id.buttonPath).setEnabled(enable);
+        findViewById(R.id.buttonEraser).setEnabled(enable);
+        findViewById(R.id.buttonSelect).setEnabled(enable);
+        findViewById(R.id.buttonDraw).setEnabled(enable);
+        findViewById(R.id.buttonPreview).setEnabled(enable);
+        //transparent them
+        findViewById(R.id.buttons_container).setAlpha(alpha);
+    }
+
+
+    private void diselectOthers(int buttonClickedId){
         switch(buttonClickedId){
             case R.id.buttonDraw:
                 findViewById(R.id.buttonPath).setBackgroundResource(android.R.drawable.btn_default);
@@ -518,11 +625,19 @@ public class MainActivity extends AppCompatActivity implements AnimeOnePointTask
     }
 
     //draw the strokes from the list from 'surfaceChanged'
-    public synchronized void drawStrokes(LinkedList<Stroke> strokesList) {
+    public synchronized void drawStrokes(LinkedList<Stroke> strokesList, boolean withPaths) {
         m_Canvas.setTarget(m_StrokesLayer);
         m_Canvas.clearColor(Color.WHITE);
 
+        if(animation != null && !animation.isCancelled() && !(animation.getStatus() == AsyncTask.Status.FINISHED)){
+            if(!selectedsList.isEmpty())
+                strokesList = selectedsList;
+        }
+
+
         for (Stroke stroke: strokesList){
+            if(!withPaths && stroke.getType()== Stroke.StrokeType.PATH)
+                continue;
             m_Paint.setColor(stroke.getColor());
 
             m_StrokeRenderer.setStrokePaint(m_Paint);
@@ -635,7 +750,7 @@ public class MainActivity extends AppCompatActivity implements AnimeOnePointTask
                 }
                 strokesList.removeAll(removedStrokes);
                 strokesList.addAll(newStrokes);
-                drawStrokes(strokesList);
+                drawStrokes(strokesList, true);
             }
         } else {
             drawStroke(event);
@@ -684,17 +799,19 @@ public class MainActivity extends AppCompatActivity implements AnimeOnePointTask
 
     @Override
     public void RenderOnAnime() {
-        Log.d("loopStroke", "drawing strokes");
-        drawStrokes(strokesList);
-        Log.d("loopStroke", "rendering");
-        renderView();
+
+        renderViewNoPaths();
         //Log.d("loopStroke", "rendered");
     }
 
     @Override
     public void AnimeEnded() {
-        counterSelected=0;
+
+        countSelectedObj = 0;
         start = end = null;
+        selectedsList.clear();
+        renderViewStrokesAndClear();
+        enableButtons(true);
         //new GifCreateTask(images, getExternalFilesDir(null).getAbsolutePath()).execute();
 
     }
@@ -704,13 +821,14 @@ public class MainActivity extends AppCompatActivity implements AnimeOnePointTask
     @Override
     public void finishedSavingAnimation() {
         findViewById(R.id.progressSpinner).setVisibility(View.INVISIBLE);
-        renderViewWithStrokesAndClear();
+        renderViewStrokesAndClear();
     }
 
-    private void renderViewWithStrokesAndClear(){
+    private void renderViewStrokesAndClear(){
         m_Canvas.setTarget(m_StrokesLayer);
         m_Canvas.clearLayer(m_StrokesLayer);
-
+        drawStrokes(strokesList, true);
+/*
         for (Stroke stroke: strokesList){
             m_Paint.setColor(stroke.getColor());
 
@@ -724,7 +842,13 @@ public class MainActivity extends AppCompatActivity implements AnimeOnePointTask
         m_Canvas.setTarget(m_CurrentFrameLayer);
         m_Canvas.clearColor(Color.WHITE);
         m_Canvas.drawLayer(m_StrokesLayer, BlendMode.BLENDMODE_NORMAL);
+*/
+        renderView();
+    }
 
+
+    private void renderViewNoPaths(){
+        drawStrokes(strokesList, false);
         renderView();
     }
 
@@ -798,10 +922,57 @@ public class MainActivity extends AppCompatActivity implements AnimeOnePointTask
 
 
     @Override
+    protected void onStop() {
+        isStopped = true;
+        countSelectedObj=0;
+        super.onStop();
+    }
+
+    public static boolean IsVisible(){
+        return !isStopped;
+    }
+
+    @Override
     protected void onDestroy() {
         AnimationManager.getManager().unregisterOnSaveListenerActivity();
         AnimationManager.getManager().stopBgHandler();
+        recorder.destroyMediaProjection();
         super.onDestroy();
+    }
+
+
+    @Override
+    public void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode != AnimeRecorder.REQUEST_CODE) {
+            Log.e(MainActivity.class.getName(), "Unknown request code: " + requestCode);
+            return;
+        }
+        if (resultCode != RESULT_OK) {
+            Toast.makeText(this,
+                    "Screen Cast Permission Denied", Toast.LENGTH_SHORT).show();
+            ((ToggleButton)findViewById(R.id.record)).setChecked(false);
+            return;
+        }
+
+        recorder.startAfterResult(resultCode, data);
+    }
+
+    private void seperateObjAndPath(LinkedList<Stroke>[] strokes){
+        for (int i = 0; i < strokes.length; i++) {
+            strokes[i] = new LinkedList<>();
+        }
+
+        Stroke tmpObjFirst = selectedsList.pollFirst();
+        strokes[0].add(tmpObjFirst);
+        int i=0;
+        for (Stroke stroke : selectedsList) {
+            if(stroke.getType() == Stroke.StrokeType.OBJ) {
+                i++;
+            }
+            strokes[i].add(stroke);
+        }
+        selectedsList.addFirst(tmpObjFirst);
+        //selectedsList.clear();
     }
 
     /**

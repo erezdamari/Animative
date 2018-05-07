@@ -44,7 +44,7 @@ public class AnimeOnePointTask extends AsyncTask<Stroke, Boolean, Void> {
             yStart = startPoints.get(1);
 
             float distanceEnd = PointCalc.Distance(xStart, yStart, targetStroke.getPoints().get(0), targetStroke.getPoints().get(1));
-            float[] direction = PointCalc.Direction(targetStroke.getPoints().get(0) - xStart, targetStroke.getPoints().get(1) - yStart);
+            PointCalc direction = PointCalc.Direction(targetStroke.getPoints().get(0) - xStart, targetStroke.getPoints().get(1) - yStart);
 
             boolean hasNotReachedTarget = PointCalc.Distance(xStart, yStart, startPoints.get(0), startPoints.get(1)) < distanceEnd-1;
             int stepsToRender = 2;
@@ -55,8 +55,8 @@ public class AnimeOnePointTask extends AsyncTask<Stroke, Boolean, Void> {
                int d = startPoints.capacity();
 
                while(i < startPoints.capacity()){
-                   startPoints.put(i-1, startPoints.get(i-1) + (direction[0]*speed));
-                   startPoints.put(i, startPoints.get(i) + (direction[1]*speed));
+                   startPoints.put(i-1, startPoints.get(i-1) + (direction.x*speed));
+                   startPoints.put(i, startPoints.get(i) + (direction.y*speed));
 
                    Log.d("loopStroke", i-1 + "/" + d + "and " + i + "/" + d);
                    i+=jump;

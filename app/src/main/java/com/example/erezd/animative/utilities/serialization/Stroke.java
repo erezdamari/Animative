@@ -12,7 +12,8 @@ import com.wacom.ink.rasterization.BlendMode;
 import com.wacom.ink.utils.Utils;
 
 public class Stroke implements Intersectable{
-	
+	public static enum StrokeType{PATH, OBJ};
+	private StrokeType type;
 	private FloatBuffer points;
 	private int color;
 	private int stride;
@@ -30,6 +31,7 @@ public class Stroke implements Intersectable{
 	
 	public Stroke(){
 		bounds = new RectF();
+		type = StrokeType.OBJ;
 	}
 	
 	public Stroke(int size) {
@@ -53,6 +55,7 @@ public class Stroke implements Intersectable{
 		hasRandomSeed = source.hasRandomSeed;
 		bounds = new RectF(source.bounds);
 		segmentsBounds = source.segmentsBounds;
+		type = source.type;
 		copyPoints(source.points, 0, source.size);
 	}
 
@@ -94,6 +97,14 @@ public class Stroke implements Intersectable{
 
 	public float getEndValue() {
 		return endT;
+	}
+
+	public StrokeType getType() {
+		return type;
+	}
+
+	public void setType(StrokeType type) {
+		this.type = type;
 	}
 
 	@Override
