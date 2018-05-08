@@ -19,6 +19,7 @@ import java.util.Queue;
 
 public class AnimationManager {
 
+    public final static int SAVE_PERMISSION = 111;
     private Queue<Runnable> savingTaskQueue = new ArrayDeque<>();
     private Runnable active = null;
     private Handler handler;

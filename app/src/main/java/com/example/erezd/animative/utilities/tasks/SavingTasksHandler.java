@@ -14,6 +14,7 @@ import java.util.Queue;
 
 public class SavingTasksHandler implements Runnable{
 
+
     private static Handler bgHandler;
     private Handler mainUIHandler;
     private Queue<Runnable> queue = new ArrayDeque<>();

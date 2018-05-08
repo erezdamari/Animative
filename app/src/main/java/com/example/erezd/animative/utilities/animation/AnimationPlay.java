@@ -10,7 +10,6 @@ import com.example.erezd.animative.activities.MainActivity;
 import com.example.erezd.animative.utilities.serialization.Stroke;
 
 import java.nio.FloatBuffer;
-import java.util.ArrayList;
 import java.util.LinkedList;
 
 /**
@@ -130,9 +129,6 @@ public class AnimationPlay extends AsyncTask<LinkedList<Stroke>[], Boolean, Void
 
         return null;
     }
-
-
-
 
 
     @Override
